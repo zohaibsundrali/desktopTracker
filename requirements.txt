@@ -1,0 +1,10 @@
+customtkinter==5.2.0
+supabase==1.1.1
+pyautogui==0.9.54
+pynput==1.7.6
+psutil==5.9.6
+pandas==2.0.3
+numpy==2.0.0
+pillow==10.0.0
+python-dotenv==1.0.0
+pyjwt==2.8.0
