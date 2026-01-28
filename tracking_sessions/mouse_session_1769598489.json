@@ -1,0 +1,390 @@
+{
+  "tracking_session": {
+    "start_time": "2026-01-28T16:08:10.147220",
+    "end_time": "2026-01-28T16:08:34.466671",
+    "idle_threshold": 3.0
+  },
+  "events": [
+    {
+      "timestamp": "2026-01-28T16:08:10.147220",
+      "x": 581,
+      "y": 545,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.272767",
+      "x": 529,
+      "y": 596,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.394712",
+      "x": 531,
+      "y": 595,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.518426",
+      "x": 607,
+      "y": 525,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.641085",
+      "x": 673,
+      "y": 475,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.741869",
+      "x": 638,
+      "y": 565,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.843218",
+      "x": 538,
+      "y": 612,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.944486",
+      "x": 551,
+      "y": 463,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:11.045229",
+      "x": 730,
+      "y": 316,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:11.145626",
+      "x": 747,
+      "y": 451,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:11.246067",
+      "x": 516,
+      "y": 621,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:11.346789",
+      "x": 482,
+      "y": 556,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:11.447564",
+      "x": 501,
+      "y": 535,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:12.555498",
+      "x": 452,
+      "y": 452,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:12.656514",
+      "x": 531,
+      "y": 114,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:12.765820",
+      "x": 701,
+      "y": 87,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:12.889143",
+      "x": 633,
+      "y": 253,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.010560",
+      "x": 611,
+      "y": 295,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.111007",
+      "x": 701,
+      "y": 174,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.211806",
+      "x": 723,
+      "y": 255,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.312259",
+      "x": 502,
+      "y": 415,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.413005",
+      "x": 458,
+      "y": 85,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.513602",
+      "x": 775,
+      "y": 22,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.614727",
+      "x": 792,
+      "y": 315,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.715472",
+      "x": 385,
+      "y": 581,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.816546",
+      "x": 431,
+      "y": 156,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:13.917266",
+      "x": 720,
+      "y": 29,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:14.017916",
+      "x": 739,
+      "y": 248,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:14.118678",
+      "x": 737,
+      "y": 255,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:16.077697",
+      "x": 752,
+      "y": 349,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:16.178955",
+      "x": 379,
+      "y": 541,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:16.279532",
+      "x": 272,
+      "y": 548,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:16.380006",
+      "x": 572,
+      "y": 167,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:16.480559",
+      "x": 780,
+      "y": 210,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:16.581004",
+      "x": 713,
+      "y": 331,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:16.681489",
+      "x": 660,
+      "y": 369,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:18.775300",
+      "x": 542,
+      "y": 461,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:18.875828",
+      "x": 168,
+      "y": 529,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:18.977536",
+      "x": 442,
+      "y": 74,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:19.078745",
+      "x": 621,
+      "y": 193,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:19.179537",
+      "x": 605,
+      "y": 409,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:19.280184",
+      "x": 431,
+      "y": 463,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:19.381033",
+      "x": 682,
+      "y": 0,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:19.481703",
+      "x": 835,
+      "y": 82,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:19.582133",
+      "x": 767,
+      "y": 247,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    },
+    {
+      "timestamp": "2026-01-28T16:08:19.682568",
+      "x": 729,
+      "y": 277,
+      "event_type": "move",
+      "button": null,
+      "scroll_delta": null
+    }
+  ],
+  "summary": {
+    "total_events": 46,
+    "move_events": 46,
+    "click_count": 0,
+    "scroll_count": 0,
+    "active_time_seconds": 4.6,
+    "current_status": "idle",
+    "last_position": [
+      729,
+      277
+    ],
+    "idle_threshold": 3.0
+  }
+}

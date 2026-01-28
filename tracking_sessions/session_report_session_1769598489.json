@@ -1,0 +1,48 @@
+{
+  "session_info": {
+    "session_id": "session_1769598489",
+    "user_id": "developer",
+    "start_time": "2026-01-28T16:08:09.873400",
+    "end_time": "2026-01-28T16:08:34.394400",
+    "duration_minutes": 0.41
+  },
+  "mouse_tracking": {
+    "total_events": 46,
+    "move_events": 46,
+    "click_count": 0,
+    "scroll_count": 0,
+    "active_time_seconds": 4.6,
+    "current_status": "idle",
+    "last_position": [
+      729,
+      277
+    ],
+    "idle_threshold": 3.0
+  },
+  "keyboard_tracking": {
+    "total_keys_pressed": 61,
+    "unique_keys_used": 14,
+    "active_time_minutes": 0.36,
+    "words_per_minute": 34.31,
+    "key_events_recorded": 108,
+    "last_activity": "16:08:34"
+  },
+  "application_tracking": {
+    "productivity_score": 93.51,
+    "productive_seconds": 33.79,
+    "distracting_seconds": 0,
+    "neutral_seconds": 2.35,
+    "total_tracked_seconds": 36.14,
+    "active_processes": 234
+  },
+  "overall_productivity": {
+    "score": 73.95,
+    "grade": "B",
+    "keyboard_contribution": 68.62,
+    "mouse_contribution": 4.6,
+    "app_contribution": 93.51
+  },
+  "recommendations": [
+    "Consider using keyboard shortcuts more to improve efficiency."
+  ]
+}

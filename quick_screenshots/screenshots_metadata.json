@@ -1,0 +1,46 @@
+{
+  "capture_settings": {
+    "interval": 5,
+    "output_dir": "quick_screenshots",
+    "compress": true,
+    "quality": 85,
+    "max_screenshots": 100
+  },
+  "statistics": {
+    "total_captured": 3,
+    "in_memory": 3,
+    "total_size_kb": 468.42,
+    "last_capture": "2026-01-28T16:28:21.853737",
+    "output_directory": "quick_screenshots",
+    "interval_seconds": 5
+  },
+  "screenshots": [
+    {
+      "timestamp": "2026-01-28T16:28:11.593257",
+      "filename": "screenshot_20260128_162811.jpg",
+      "filepath": "quick_screenshots\\screenshot_20260128_162811.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 184.36,
+      "app_active": "powershell.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:28:16.742989",
+      "filename": "screenshot_20260128_162816.jpg",
+      "filepath": "quick_screenshots\\screenshot_20260128_162816.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 139.87,
+      "app_active": "powershell.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:28:21.853737",
+      "filename": "screenshot_20260128_162821.jpg",
+      "filepath": "quick_screenshots\\screenshot_20260128_162821.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 144.19,
+      "app_active": "chrome.exe"
+    }
+  ]
+}

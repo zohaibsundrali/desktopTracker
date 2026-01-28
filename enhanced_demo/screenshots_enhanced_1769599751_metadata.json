@@ -1,0 +1,64 @@
+{
+  "capture_settings": {
+    "interval": 30,
+    "output_dir": "enhanced_demo\\screenshots",
+    "compress": true,
+    "quality": 80,
+    "max_screenshots": 50
+  },
+  "statistics": {
+    "total_captured": 5,
+    "in_memory": 5,
+    "total_size_kb": 762.61,
+    "last_capture": "2026-01-28T16:31:13.123327",
+    "output_directory": "enhanced_demo\\screenshots",
+    "interval_seconds": 30
+  },
+  "screenshots": [
+    {
+      "timestamp": "2026-01-28T16:29:12.681312",
+      "filename": "screenshot_20260128_162912.jpg",
+      "filepath": "enhanced_demo\\screenshots\\screenshot_20260128_162912.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 126.14,
+      "app_active": "powershell.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:29:42.781846",
+      "filename": "screenshot_20260128_162942.jpg",
+      "filepath": "enhanced_demo\\screenshots\\screenshot_20260128_162942.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 191.03,
+      "app_active": "Code.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:30:12.857867",
+      "filename": "screenshot_20260128_163012.jpg",
+      "filepath": "enhanced_demo\\screenshots\\screenshot_20260128_163012.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 192.04,
+      "app_active": "Code.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:30:42.950866",
+      "filename": "screenshot_20260128_163042.jpg",
+      "filepath": "enhanced_demo\\screenshots\\screenshot_20260128_163042.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 126.02,
+      "app_active": "chrome.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:31:13.123327",
+      "filename": "screenshot_20260128_163113.jpg",
+      "filepath": "enhanced_demo\\screenshots\\screenshot_20260128_163113.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 127.38,
+      "app_active": "chrome.exe"
+    }
+  ]
+}

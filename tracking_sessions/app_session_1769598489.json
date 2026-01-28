@@ -1,0 +1,1985 @@
+{
+  "monitoring_session": {
+    "start_time": "2026-01-28T16:08:09.923526",
+    "end_time": "2026-01-28T16:08:34.477233",
+    "check_interval": 2.0
+  },
+  "events": [
+    {
+      "timestamp": "2026-01-28T16:08:09.923526",
+      "app_name": "System Idle Process",
+      "process_id": 0,
+      "cpu_percent": 0.0,
+      "memory_percent": 9.677806467097394e-05,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.926073",
+      "app_name": "System",
+      "process_id": 4,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.022113787777317546,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.931323",
+      "app_name": "Registry",
+      "process_id": 100,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.063832875895681,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.931558",
+      "app_name": "RuntimeBroker.exe",
+      "process_id": 244,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12087580277404646,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.931704",
+      "app_name": "chrome.exe",
+      "process_id": 252,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.402741916128258,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.936575",
+      "app_name": "smss.exe",
+      "process_id": 408,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.01291987163357502,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.942764",
+      "app_name": "svchost.exe",
+      "process_id": 468,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2417032165157574,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.947983",
+      "app_name": "conhost.exe",
+      "process_id": 568,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.05671194589719073,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.952855",
+      "app_name": "csrss.exe",
+      "process_id": 576,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.07413199753796604,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.958698",
+      "app_name": "wininit.exe",
+      "process_id": 652,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08298719045536015,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.958991",
+      "app_name": "Code.exe",
+      "process_id": 692,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.35546583153648725,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.964321",
+      "app_name": "services.exe",
+      "process_id": 792,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11802084986625272,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.969207",
+      "app_name": "lsass.exe",
+      "process_id": 800,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.24770345652535777,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.975103",
+      "app_name": "svchost.exe",
+      "process_id": 924,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.40317741741927743,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.980367",
+      "app_name": "svchost.exe",
+      "process_id": 956,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12489209245789186,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.985553",
+      "app_name": "fontdrvhost.exe",
+      "process_id": 960,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.03929189425641542,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.985786",
+      "app_name": "svchost.exe",
+      "process_id": 972,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.13790874215613785,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.992525",
+      "app_name": "WUDFHost.exe",
+      "process_id": 996,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11739179244589137,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.998257",
+      "app_name": "svchost.exe",
+      "process_id": 1056,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.243251665550493,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:09.998416",
+      "app_name": "chrome.exe",
+      "process_id": 1080,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.6873662043255924,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.003911",
+      "app_name": "SearchProtocolHost.exe",
+      "process_id": 1160,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1786039183502824,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.012813",
+      "app_name": "svchost.exe",
+      "process_id": 1248,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1265373195572984,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.018231",
+      "app_name": "svchost.exe",
+      "process_id": 1296,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.14100564022560902,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.025917",
+      "app_name": "svchost.exe",
+      "process_id": 1320,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.18518482674790862,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.031538",
+      "app_name": "svchost.exe",
+      "process_id": 1332,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09639095241229005,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.037441",
+      "app_name": "svchost.exe",
+      "process_id": 1348,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08700348013920557,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.044732",
+      "app_name": "svchost.exe",
+      "process_id": 1364,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.10500420016800673,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.050090",
+      "app_name": "svchost.exe",
+      "process_id": 1400,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09150366014640586,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.056997",
+      "app_name": "svchost.exe",
+      "process_id": 1452,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.18044270157903092,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.062217",
+      "app_name": "svchost.exe",
+      "process_id": 1460,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09266499692245755,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.067563",
+      "app_name": "svchost.exe",
+      "process_id": 1512,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1288116040770663,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.075664",
+      "app_name": "svchost.exe",
+      "process_id": 1576,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.16239359251789426,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.081220",
+      "app_name": "svchost.exe",
+      "process_id": 1628,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1017137459691936,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.089108",
+      "app_name": "MemCompression",
+      "process_id": 1636,
+      "cpu_percent": 0.0,
+      "memory_percent": 2.607684952559393,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.095553",
+      "app_name": "svchost.exe",
+      "process_id": 1712,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.22505738939234987,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.100990",
+      "app_name": "svchost.exe",
+      "process_id": 1736,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09068104659670258,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.108007",
+      "app_name": "svchost.exe",
+      "process_id": 1828,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.15029633443402252,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.113573",
+      "app_name": "svchost.exe",
+      "process_id": 1848,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12126291503273033,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.119875",
+      "app_name": "svchost.exe",
+      "process_id": 1860,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1262469853632855,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.120337",
+      "app_name": "chrome.exe",
+      "process_id": 1872,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.7734502928504237,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.127026",
+      "app_name": "svchost.exe",
+      "process_id": 1896,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1604096421921393,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.133173",
+      "app_name": "svchost.exe",
+      "process_id": 1920,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.17139395253229484,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.141503",
+      "app_name": "svchost.exe",
+      "process_id": 1944,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.07214804721221106,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.147487",
+      "app_name": "svchost.exe",
+      "process_id": 2016,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.14802204991425463,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.153997",
+      "app_name": "svchost.exe",
+      "process_id": 2188,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.13002132988545348,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.160382",
+      "app_name": "svchost.exe",
+      "process_id": 2280,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12339203245549178,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.166471",
+      "app_name": "spoolsv.exe",
+      "process_id": 2460,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.16045803122447477,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.173239",
+      "app_name": "svchost.exe",
+      "process_id": 2480,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1555223499262551,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.173428",
+      "app_name": "RuntimeBroker.exe",
+      "process_id": 2508,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.3634984109041781,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.180145",
+      "app_name": "HotKeyServiceUWP.exe",
+      "process_id": 2568,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.37307943930660453,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.180353",
+      "app_name": "powershell.exe",
+      "process_id": 2580,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.8305977400386337,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.186062",
+      "app_name": "wlanext.exe",
+      "process_id": 2608,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.06977698462777221,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.192614",
+      "app_name": "WmiPrvSE.exe",
+      "process_id": 2632,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12310169826147885,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.198405",
+      "app_name": "svchost.exe",
+      "process_id": 2676,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12871482601239534,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.208493",
+      "app_name": "svchost.exe",
+      "process_id": 2684,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.10379447435961955,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.226407",
+      "app_name": "svchost.exe",
+      "process_id": 2696,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.13055360924114384,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.241001",
+      "app_name": "svchost.exe",
+      "process_id": 2848,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09116493692005745,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.241269",
+      "app_name": "chrome.exe",
+      "process_id": 2936,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.6745431107566883,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.248308",
+      "app_name": "svchost.exe",
+      "process_id": 2960,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.21833131389771718,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.258721",
+      "app_name": "WmiPrvSE.exe",
+      "process_id": 3004,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.13200528021120844,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.258890",
+      "app_name": "Code.exe",
+      "process_id": 3028,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.424524722924401,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.266124",
+      "app_name": "svchost.exe",
+      "process_id": 3032,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11119799630694906,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.272909",
+      "app_name": "svchost.exe",
+      "process_id": 3116,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2312995745636277,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.278734",
+      "app_name": "svchost.exe",
+      "process_id": 3168,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09290694208413497,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.283984",
+      "app_name": "svchost.exe",
+      "process_id": 3264,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.07389005237628861,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.284190",
+      "app_name": "python.exe",
+      "process_id": 3296,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.04055000909713808,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.291054",
+      "app_name": "svchost.exe",
+      "process_id": 3332,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08293880142302466,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.296332",
+      "app_name": "mongod.exe",
+      "process_id": 3356,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.5646032292904619,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.296629",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 3512,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.19476585515033504,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.303154",
+      "app_name": "WsNativePushService.exe",
+      "process_id": 3540,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.05385699298939699,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.310209",
+      "app_name": "svchost.exe",
+      "process_id": 3624,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.17371662608439822,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.317391",
+      "app_name": "CxMonSvc.exe",
+      "process_id": 3640,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.23459002876244084,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.325670",
+      "app_name": "CxUtilSvc.exe",
+      "process_id": 3656,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09058426853203161,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.331047",
+      "app_name": "svchost.exe",
+      "process_id": 3664,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08637442271884424,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.338117",
+      "app_name": "svchost.exe",
+      "process_id": 3688,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.4682606659105074,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.344284",
+      "app_name": "svchost.exe",
+      "process_id": 3716,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.5585062112161906,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.344462",
+      "app_name": "powershell.exe",
+      "process_id": 3728,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.9157140479167554,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.350259",
+      "app_name": "DSAService.exe",
+      "process_id": 3732,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.0835272120562243,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.356918",
+      "app_name": "DSAUpdateService.exe",
+      "process_id": 3756,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.46801872074883,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.363182",
+      "app_name": "unsecapp.exe",
+      "process_id": 3804,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09401988982785117,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.368657",
+      "app_name": "AppHelperCap.exe",
+      "process_id": 3848,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1801039783526825,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.368816",
+      "app_name": "RuntimeBroker.exe",
+      "process_id": 3900,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.36136929348141666,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.375738",
+      "app_name": "DiagsCap.exe",
+      "process_id": 3904,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1712003964029529,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.381148",
+      "app_name": "NetworkCap.exe",
+      "process_id": 3924,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12934388343275668,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.386210",
+      "app_name": "OneApp.IGCC.WinService.exe",
+      "process_id": 3984,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.527730786650821,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.392000",
+      "app_name": "SysInfoCap.exe",
+      "process_id": 3992,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.3102704753351424,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.397483",
+      "app_name": "ibtsiva.exe",
+      "process_id": 4012,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.05627644460617134,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.402491",
+      "app_name": "svchost.exe",
+      "process_id": 4040,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.13021488601479544,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.408464",
+      "app_name": "svchost.exe",
+      "process_id": 4048,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12832771375371144,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.413749",
+      "app_name": "MpDefenderCoreService.exe",
+      "process_id": 4064,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.22065398744982057,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.418890",
+      "app_name": "svchost.exe",
+      "process_id": 4100,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.21963781777077535,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.425803",
+      "app_name": "dasHost.exe",
+      "process_id": 4176,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1637000963909524,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.431043",
+      "app_name": "svchost.exe",
+      "process_id": 4208,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11352066985905243,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.431261",
+      "app_name": "msedge.exe",
+      "process_id": 4224,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.47818041753928225,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.431369",
+      "app_name": "msedge.exe",
+      "process_id": 4248,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.6807369068956306,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.436991",
+      "app_name": "svchost.exe",
+      "process_id": 4268,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09924590532008376,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.443372",
+      "app_name": "svchost.exe",
+      "process_id": 4288,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.07534172334635321,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.448604",
+      "app_name": "svchost.exe",
+      "process_id": 4332,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.06658330849363008,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.454097",
+      "app_name": "MsMpEng.exe",
+      "process_id": 4352,
+      "cpu_percent": 0.0,
+      "memory_percent": 2.707463137235167,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.459983",
+      "app_name": "SynTPEnhService.exe",
+      "process_id": 4404,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.05385699298939699,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.465539",
+      "app_name": "svchost.exe",
+      "process_id": 4412,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2667687352655396,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.472030",
+      "app_name": "XtuService.exe",
+      "process_id": 4440,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.4598409742841326,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.479002",
+      "app_name": "LanWlanWwanSwitchingServiceUWP.exe",
+      "process_id": 4488,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.15726435509033265,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.479216",
+      "app_name": "Code.exe",
+      "process_id": 4508,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.3378115769792083,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.479377",
+      "app_name": "RuntimeBroker.exe",
+      "process_id": 4656,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.5237144969669755,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.479498",
+      "app_name": "conhost.exe",
+      "process_id": 4756,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.07655144915474038,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.479684",
+      "app_name": "chrome.exe",
+      "process_id": 4820,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.8644216736411392,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.479916",
+      "app_name": "RuntimeBroker.exe",
+      "process_id": 4896,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.3490300902358675,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.480181",
+      "app_name": "prevhost.exe",
+      "process_id": 4940,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.18237826287245038,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.480318",
+      "app_name": "chrome.exe",
+      "process_id": 4980,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.4507438362050611,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.487159",
+      "app_name": "svchost.exe",
+      "process_id": 5020,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.10403641952129697,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.487512",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 5104,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.3385296702190668,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.487722",
+      "app_name": "msedge.exe",
+      "process_id": 5164,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.1972898270769539,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.494834",
+      "app_name": "SearchIndexer.exe",
+      "process_id": 5360,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.5754907615659466,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.502384",
+      "app_name": "svchost.exe",
+      "process_id": 5412,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.15266739701846138,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.502669",
+      "app_name": "Code.exe",
+      "process_id": 5468,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.135400254719866,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.509863",
+      "app_name": "svchost.exe",
+      "process_id": 5548,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09198755046976073,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.515529",
+      "app_name": "svchost.exe",
+      "process_id": 5572,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.13461828795732475,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.515745",
+      "app_name": "StartMenuExperienceHost.exe",
+      "process_id": 5644,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.7894186735211344,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.521529",
+      "app_name": "svchost.exe",
+      "process_id": 5692,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11840796212493662,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.521724",
+      "app_name": "chrome.exe",
+      "process_id": 5704,
+      "cpu_percent": 0.0,
+      "memory_percent": 3.1344479585635034,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.521987",
+      "app_name": "WsToastNotification.exe",
+      "process_id": 5796,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.14942533185198376,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.522228",
+      "app_name": "python.exe",
+      "process_id": 5888,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.8979068840172962,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.522729",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 5980,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.9776036202738432,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.522890",
+      "app_name": "pet.exe",
+      "process_id": 5984,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.07514816721701126,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.523037",
+      "app_name": "taskhostw.exe",
+      "process_id": 6004,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.21029873453002637,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.523137",
+      "app_name": "chrome.exe",
+      "process_id": 6024,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1113431634039555,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.528383",
+      "app_name": "svchost.exe",
+      "process_id": 6036,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.10234280338955494,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.528537",
+      "app_name": "python.exe",
+      "process_id": 6112,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.0279282139027497,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.528646",
+      "app_name": "chrome.exe",
+      "process_id": 6128,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.8297751264889306,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.528807",
+      "app_name": "HPHotkeyNotification.exe",
+      "process_id": 6328,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.3756924470527208,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.534348",
+      "app_name": "igfxCUIService.exe",
+      "process_id": 6364,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11347228082671694,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.540391",
+      "app_name": "dllhost.exe",
+      "process_id": 6500,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.13539251247469256,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.545406",
+      "app_name": "svchost.exe",
+      "process_id": 6736,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.148457551205274,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.545777",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 6804,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.5025684898363677,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.546013",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 6908,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.39896757160609003,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.551256",
+      "app_name": "AggregatorHost.exe",
+      "process_id": 7028,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.0916972162757478,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.558003",
+      "app_name": "HPAudioAnalytics.exe",
+      "process_id": 7196,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.13529573441002157,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.558154",
+      "app_name": "chrome.exe",
+      "process_id": 7200,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.8361624787572148,
+      "duration": 16.896707773208618
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.563521",
+      "app_name": "NisSrv.exe",
+      "process_id": 7388,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12184358342075619,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.563710",
+      "app_name": "ctfmon.exe",
+      "process_id": 7452,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.25080035459482897,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.563820",
+      "app_name": "chrome.exe",
+      "process_id": 7548,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.23468680682711182,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.563967",
+      "app_name": "WSHelper.exe",
+      "process_id": 7616,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.24078382490138314,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.568971",
+      "app_name": "svchost.exe",
+      "process_id": 7696,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2316866868223116,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.575122",
+      "app_name": "svchost.exe",
+      "process_id": 7860,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.21528280486058154,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.575294",
+      "app_name": "powershell.exe",
+      "process_id": 7920,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.9386504492437763,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.575538",
+      "app_name": "svchost.exe",
+      "process_id": 8012,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.4277106568133693,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.575653",
+      "app_name": "Code.exe",
+      "process_id": 8140,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.146916844415712,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.581441",
+      "app_name": "dwm.exe",
+      "process_id": 8404,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.4899466946419793,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.581603",
+      "app_name": "Code.exe",
+      "process_id": 8504,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.1732888670385526,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.581706",
+      "app_name": "Code.exe",
+      "process_id": 8588,
+      "cpu_percent": 0.0,
+      "memory_percent": 2.847404218749395,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.586968",
+      "app_name": "svchost.exe",
+      "process_id": 8596,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11864990728661404,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.587207",
+      "app_name": "svchost.exe",
+      "process_id": 8604,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2781401578643791,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.587450",
+      "app_name": "msedge.exe",
+      "process_id": 8640,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.7320776702035824,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.587639",
+      "app_name": "SynTPEnh.exe",
+      "process_id": 8860,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2554940907313712,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.587834",
+      "app_name": "conhost.exe",
+      "process_id": 8984,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1255695389105887,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.588060",
+      "app_name": "conhost.exe",
+      "process_id": 8988,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.10781076404346496,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.588193",
+      "app_name": "unsecapp.exe",
+      "process_id": 9012,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09029393433801869,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.588336",
+      "app_name": "conhost.exe",
+      "process_id": 9016,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12677926471897585,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.588586",
+      "app_name": "msedge.exe",
+      "process_id": 9076,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.7587961582979448,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.594182",
+      "app_name": "svchost.exe",
+      "process_id": 9152,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.21412146808452984,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.594349",
+      "app_name": "chrome.exe",
+      "process_id": 9204,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.7447072076431445,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.594481",
+      "app_name": "Code.exe",
+      "process_id": 9336,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.6821479310785334,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.594592",
+      "app_name": "msedge.exe",
+      "process_id": 9444,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.47614807818119176,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.594700",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 9456,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.24741312233134485,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.599779",
+      "app_name": "SecurityHealthService.exe",
+      "process_id": 9632,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.20299199064736784,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.599948",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 9656,
+      "cpu_percent": 0.0,
+      "memory_percent": 3.9726911657111446,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.600057",
+      "app_name": "chrome.exe",
+      "process_id": 9784,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.5264320250229364,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.606010",
+      "app_name": "svchost.exe",
+      "process_id": 9832,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.21629897453962674,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.606240",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 9872,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09072943562903807,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.606420",
+      "app_name": "python.exe",
+      "process_id": 9968,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.3185449998645107,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.606568",
+      "app_name": "chrome.exe",
+      "process_id": 10076,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.9659902525133263,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.606717",
+      "app_name": "msedge.exe",
+      "process_id": 10084,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08772931562423787,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.606860",
+      "app_name": "Code.exe",
+      "process_id": 10112,
+      "cpu_percent": 0.0,
+      "memory_percent": 3.8620254487598857,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.607059",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 10172,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.4973424743441351,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.614820",
+      "app_name": "SearchFilterHost.exe",
+      "process_id": 10196,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09237466272844462,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.620248",
+      "app_name": "svchost.exe",
+      "process_id": 10300,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.14057013893458964,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.620637",
+      "app_name": "igfxEM.exe",
+      "process_id": 10316,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.15257061895379043,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.620836",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 10320,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08700348013920557,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.621043",
+      "app_name": "IGCC.exe",
+      "process_id": 10340,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.6017176170917804,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.621150",
+      "app_name": "Code.exe",
+      "process_id": 10532,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.1315291321330272,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.624672",
+      "app_name": "svchost.exe",
+      "process_id": 10536,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2990442198333095,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.624884",
+      "app_name": "WhatsApp.Root.exe",
+      "process_id": 10540,
+      "cpu_percent": 0.0,
+      "memory_percent": 2.6429605571319623,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.629919",
+      "app_name": "svchost.exe",
+      "process_id": 10724,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08453563949009574,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.630125",
+      "app_name": "MicTray64.exe",
+      "process_id": 10784,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12266619697045945,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.630243",
+      "app_name": "Code.exe",
+      "process_id": 10876,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.5183510566229101,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.635497",
+      "app_name": "fontdrvhost.exe",
+      "process_id": 10904,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.06624458526728166,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.641246",
+      "app_name": "svchost.exe",
+      "process_id": 10924,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08685831304219911,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.641398",
+      "app_name": "Code.exe",
+      "process_id": 10980,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.286906314962276,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.641497",
+      "app_name": "conhost.exe",
+      "process_id": 11028,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11773051567223979,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.641743",
+      "app_name": "CompPkgSrv.exe",
+      "process_id": 11144,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1036009182302776,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.641901",
+      "app_name": "IGCCTray.exe",
+      "process_id": 11164,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.6463806939374349,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.642014",
+      "app_name": "dllhost.exe",
+      "process_id": 11260,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.1581353576723714,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.642251",
+      "app_name": "SecurityHealthSystray.exe",
+      "process_id": 11384,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11163349759796842,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.642368",
+      "app_name": "chrome.exe",
+      "process_id": 11420,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.668155758488404,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.642572",
+      "app_name": "chrome.exe",
+      "process_id": 11504,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.46816388784583646,
+      "duration": 16.896707773208618
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.642670",
+      "app_name": "Code.exe",
+      "process_id": 11568,
+      "cpu_percent": 0.0,
+      "memory_percent": 2.1716513821843195,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.642917",
+      "app_name": "ShellExperienceHost.exe",
+      "process_id": 11804,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.8629700026710745,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643033",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 11816,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08240652206733431,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643132",
+      "app_name": "Code.exe",
+      "process_id": 11868,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.298132570464109,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643226",
+      "app_name": "conhost.exe",
+      "process_id": 11872,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.220895932611498,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643324",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 11960,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.2283071968040011,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643418",
+      "app_name": "chrome.exe",
+      "process_id": 11976,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2887857449781862,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643509",
+      "app_name": "conhost.exe",
+      "process_id": 12056,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.07737406270444366,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643639",
+      "app_name": "TextInputHost.exe",
+      "process_id": 12060,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.5528930834652741,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643732",
+      "app_name": "chrome.exe",
+      "process_id": 12272,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.7491183518308473,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643857",
+      "app_name": "sihost.exe",
+      "process_id": 12512,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.3220773992250013,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.643951",
+      "app_name": "msedge.exe",
+      "process_id": 12708,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08555180916914096,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.644183",
+      "app_name": "SearchApp.exe",
+      "process_id": 12876,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.3789906434967076,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.644344",
+      "app_name": "explorer.exe",
+      "process_id": 12920,
+      "cpu_percent": 0.0,
+      "memory_percent": 2.188297209307727,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.649911",
+      "app_name": "svchost.exe",
+      "process_id": 13084,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.24426783522953824,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.650189",
+      "app_name": "SearchApp.exe",
+      "process_id": 13188,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.7580141915354033,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.650377",
+      "app_name": "SystemSettingsBroker.exe",
+      "process_id": 13380,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.384257305776102,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.656224",
+      "app_name": "svchost.exe",
+      "process_id": 13420,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09213271756676719,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.656484",
+      "app_name": "msedge.exe",
+      "process_id": 13436,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.289753525624896,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.662762",
+      "app_name": "csrss.exe",
+      "process_id": 13500,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08192263174397943,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.663201",
+      "app_name": "SynTPHelper.exe",
+      "process_id": 13620,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.06072823558103614,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.663343",
+      "app_name": "Code.exe",
+      "process_id": 13632,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.5499413524928094,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.663461",
+      "app_name": "msedge.exe",
+      "process_id": 13676,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2872856849757861,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.663657",
+      "app_name": "svchost.exe",
+      "process_id": 13692,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11613367760516874,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.663872",
+      "app_name": "SmartAudio3.exe",
+      "process_id": 13708,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.6822369668980308,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.664036",
+      "app_name": "msedgewebview2.exe",
+      "process_id": 13800,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.33422304634120853,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.664279",
+      "app_name": "UserOOBEBroker.exe",
+      "process_id": 13824,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.11632723373451066,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.664395",
+      "app_name": "svchost.exe",
+      "process_id": 13988,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2658977326835009,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.669701",
+      "app_name": "SurSvc.exe",
+      "process_id": 14124,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.5400216008640346,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.669882",
+      "app_name": "figma_agent.exe",
+      "process_id": 14252,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2027984345180259,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.670114",
+      "app_name": "msedge.exe",
+      "process_id": 14256,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.20875028549529076,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.670545",
+      "app_name": "ApplicationFrameHost.exe",
+      "process_id": 14264,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.3003507237063676,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.670852",
+      "app_name": "SystemSettings.exe",
+      "process_id": 14308,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.028597918110272798,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.675770",
+      "app_name": "winlogon.exe",
+      "process_id": 14328,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12305330922914336,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.675913",
+      "app_name": "chrome.exe",
+      "process_id": 14332,
+      "cpu_percent": 0.0,
+      "memory_percent": 5.981610232151222,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.676058",
+      "app_name": "chrome.exe",
+      "process_id": 14676,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2946892069231156,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.676279",
+      "app_name": "taskhostw.exe",
+      "process_id": 14852,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09198755046976073,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.681361",
+      "app_name": "svchost.exe",
+      "process_id": 14920,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.07442233173197896,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:10.681514",
+      "app_name": "chrome.exe",
+      "process_id": 15156,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.0996407598239415,
+      "duration": 0
+    },
+    {
+      "timestamp": "2026-01-28T16:08:12.980954",
+      "app_name": "dllhost.exe",
+      "process_id": 8756,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.09068104659670258,
+      "duration": 2.345886707305908
+    },
+    {
+      "timestamp": "2026-01-28T16:08:27.138514",
+      "app_name": "chrome.exe",
+      "process_id": 11640,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.4772126368925725,
+      "duration": 0
+    }
+  ],
+  "productivity": {
+    "productivity_score": 93.51,
+    "productive_seconds": 33.79,
+    "distracting_seconds": 0,
+    "neutral_seconds": 2.35,
+    "total_tracked_seconds": 36.14,
+    "active_processes": 234
+  },
+  "active_processes": [
+    {
+      "name": "System Idle Process",
+      "pid": 0,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 9.677806467097394e-05
+    },
+    {
+      "name": "System",
+      "pid": 4,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.022113787777317546
+    },
+    {
+      "name": "Registry",
+      "pid": 100,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 1.063832875895681
+    },
+    {
+      "name": "RuntimeBroker.exe",
+      "pid": 244,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.12087580277404646
+    },
+    {
+      "name": "chrome.exe",
+      "pid": 252,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.402741916128258
+    },
+    {
+      "name": "smss.exe",
+      "pid": 408,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.01291987163357502
+    },
+    {
+      "name": "svchost.exe",
+      "pid": 468,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.2417032165157574
+    },
+    {
+      "name": "conhost.exe",
+      "pid": 568,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.05671194589719073
+    },
+    {
+      "name": "csrss.exe",
+      "pid": 576,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.07413199753796604
+    },
+    {
+      "name": "wininit.exe",
+      "pid": 652,
+      "duration_seconds": 23.93,
+      "cpu_percent": 0.0,
+      "memory_percent": 0.08298719045536015
+    }
+  ]
+}

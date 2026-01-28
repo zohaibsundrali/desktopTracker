@@ -1,0 +1,64 @@
+{
+  "capture_settings": {
+    "interval": 10,
+    "output_dir": "test_screenshots",
+    "compress": true,
+    "quality": 85,
+    "max_screenshots": 100
+  },
+  "statistics": {
+    "total_captured": 5,
+    "in_memory": 5,
+    "total_size_kb": 1099.51,
+    "last_capture": "2026-01-28T16:25:58.088400",
+    "output_directory": "test_screenshots",
+    "interval_seconds": 10
+  },
+  "screenshots": [
+    {
+      "timestamp": "2026-01-28T16:25:37.802209",
+      "filename": "screenshot_20260128_162537.jpg",
+      "filepath": "test_screenshots\\screenshot_20260128_162537.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 259.3,
+      "app_active": "powershell.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:25:42.591584",
+      "filename": "screenshot_20260128_162542.jpg",
+      "filepath": "test_screenshots\\screenshot_20260128_162542.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 264.56,
+      "app_active": "powershell.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:25:47.764222",
+      "filename": "screenshot_20260128_162547.jpg",
+      "filepath": "test_screenshots\\screenshot_20260128_162547.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 175.61,
+      "app_active": "powershell.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:25:47.983078",
+      "filename": "screenshot_20260128_162547.jpg",
+      "filepath": "test_screenshots\\screenshot_20260128_162547.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 223.77,
+      "app_active": "powershell.exe"
+    },
+    {
+      "timestamp": "2026-01-28T16:25:58.088400",
+      "filename": "screenshot_20260128_162558.jpg",
+      "filepath": "test_screenshots\\screenshot_20260128_162558.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 176.27,
+      "app_active": "powershell.exe"
+    }
+  ]
+}

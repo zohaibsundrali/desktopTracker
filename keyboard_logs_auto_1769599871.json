@@ -1,0 +1,105 @@
+{
+  "tracking_session": {
+    "start_time": "2026-01-28T16:29:17.109152",
+    "end_time": "2026-01-28T16:31:11.948331",
+    "save_interval": 30
+  },
+  "events": [
+    {
+      "timestamp": "2026-01-28T16:29:17.109152",
+      "key": "Key.alt_l",
+      "event_type": "press",
+      "duration": null
+    },
+    {
+      "timestamp": "2026-01-28T16:29:17.315836",
+      "key": "Key.tab",
+      "event_type": "press",
+      "duration": null
+    },
+    {
+      "timestamp": "2026-01-28T16:29:17.389718",
+      "key": "Key.alt_l",
+      "event_type": "release",
+      "duration": 0.28055691719055176
+    },
+    {
+      "timestamp": "2026-01-28T16:29:17.445860",
+      "key": "Key.tab",
+      "event_type": "release",
+      "duration": 0.13001680374145508
+    },
+    {
+      "timestamp": "2026-01-28T16:30:20.195080",
+      "key": "Key.alt_l",
+      "event_type": "press",
+      "duration": null
+    },
+    {
+      "timestamp": "2026-01-28T16:30:20.327738",
+      "key": "Key.tab",
+      "event_type": "press",
+      "duration": null
+    },
+    {
+      "timestamp": "2026-01-28T16:30:20.409977",
+      "key": "Key.alt_l",
+      "event_type": "release",
+      "duration": 0.2148587703704834
+    },
+    {
+      "timestamp": "2026-01-28T16:30:20.438167",
+      "key": "Key.tab",
+      "event_type": "release",
+      "duration": 0.1103975772857666
+    },
+    {
+      "timestamp": "2026-01-28T16:30:22.275651",
+      "key": "Key.alt_l",
+      "event_type": "press",
+      "duration": null
+    },
+    {
+      "timestamp": "2026-01-28T16:30:22.299661",
+      "key": "Key.tab",
+      "event_type": "press",
+      "duration": null
+    },
+    {
+      "timestamp": "2026-01-28T16:30:22.402517",
+      "key": "Key.tab",
+      "event_type": "release",
+      "duration": 0.10290265083312988
+    },
+    {
+      "timestamp": "2026-01-28T16:30:22.530428",
+      "key": "Key.tab",
+      "event_type": "press",
+      "duration": null
+    },
+    {
+      "timestamp": "2026-01-28T16:30:22.621534",
+      "key": "Key.tab",
+      "event_type": "release",
+      "duration": 0.09110522270202637
+    },
+    {
+      "timestamp": "2026-01-28T16:30:22.671884",
+      "key": "Key.alt_l",
+      "event_type": "release",
+      "duration": 0.3962383270263672
+    }
+  ],
+  "summary": {
+    "total_keys_pressed": 7,
+    "unique_keys_used": 2,
+    "active_time_minutes": 1.09,
+    "words_per_minute": 1.28,
+    "key_events_recorded": 14,
+    "last_activity": "16:30:22"
+  },
+  "heatmap": {
+    "Key.tab": 4,
+    "Key.alt_l": 3
+  }
+}

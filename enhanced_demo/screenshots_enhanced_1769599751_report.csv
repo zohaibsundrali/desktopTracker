@@ -1,0 +1,6 @@
+timestamp,filename,filepath,width,height,size_kb,app_active
+2026-01-28T16:29:12.681312,screenshot_20260128_162912.jpg,enhanced_demo\screenshots\screenshot_20260128_162912.jpg,1600,900,126.14,powershell.exe
+2026-01-28T16:29:42.781846,screenshot_20260128_162942.jpg,enhanced_demo\screenshots\screenshot_20260128_162942.jpg,1600,900,191.03,Code.exe
+2026-01-28T16:30:12.857867,screenshot_20260128_163012.jpg,enhanced_demo\screenshots\screenshot_20260128_163012.jpg,1600,900,192.04,Code.exe
+2026-01-28T16:30:42.950866,screenshot_20260128_163042.jpg,enhanced_demo\screenshots\screenshot_20260128_163042.jpg,1600,900,126.02,chrome.exe
+2026-01-28T16:31:13.123327,screenshot_20260128_163113.jpg,enhanced_demo\screenshots\screenshot_20260128_163113.jpg,1600,900,127.38,chrome.exe

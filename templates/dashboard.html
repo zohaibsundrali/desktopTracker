@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Productivity Tracker Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .dashboard { max-width: 1200px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .stats { display: flex; justify-content: space-around; margin-bottom: 30px; }
+        .stat-card { background: #f5f5f5; padding: 20px; border-radius: 10px; text-align: center; }
+        .session-list { margin-top: 30px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .grade-A { color: green; font-weight: bold; }
+        .grade-B { color: blue; }
+        .grade-C { color: orange; }
+        .grade-D { color: red; }
+        .grade-F { color: darkred; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>📊 Productivity Tracker Dashboard</h1>
+            <p>Monitor your developer productivity</p>
+        </div>
+        
+        <div class="stats" id="stats">
+            <!-- Stats will be loaded by JavaScript -->
+        </div>
+        
+        <div class="session-list">
+            <h2>Recent Sessions</h2>
+            <table id="sessions-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Session ID</th>
+                        <th>Score</th>
+                        <th>Grade</th>
+                        <th>Duration</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="sessions-body">
+                    <!-- Sessions will be loaded by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        // Load statistics
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('stats').innerHTML = `
+                    <div class="stat-card">
+                        <h3>Total Sessions</h3>
+                        <h2>${data.total_sessions}</h2>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Average Score</h3>
+                        <h2>${data.average_score}/100</h2>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Best Score</h3>
+                        <h2>${data.best_score}/100</h2>
+                    </div>
+                `;
+            });
+        
+        // Load sessions
+        fetch('/api/sessions')
+            .then(response => response.json())
+            .then(sessions => {
+                const tbody = document.getElementById('sessions-body');
+                sessions.forEach(session => {
+                    const row = document.createElement('tr');
+                    const gradeClass = `grade-${session.grade.charAt(0)}`;
+                    
+                    row.innerHTML = `
+                        <td>${session.date}</td>
+                        <td>${session.id.substring(0, 15)}...</td>
+                        <td>${session.score.toFixed(2)}</td>
+                        <td class="${gradeClass}">${session.grade}</td>
+                        <td>${session.duration} min</td>
+                        <td>
+                            <button onclick="viewSession('${session.id}')">View</button>
+                            <button onclick="viewScreenshots('${session.id}')">Screenshots</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            });
+        
+        function viewSession(sessionId) {
+            fetch(`/api/session/${sessionId}`)
+                .then(response => response.json())
+                .then(data => {
+                    alert(`Session ${sessionId}\nScore: ${data.overall_productivity.score}/100\nGrade: ${data.overall_productivity.grade}`);
+                });
+        }
+        
+        function viewScreenshots(sessionId) {
+            fetch(`/api/screenshots/${sessionId}`)
+                .then(response => response.json())
+                .then(screenshots => {
+                    if (screenshots.length > 0) {
+                        alert(`Found ${screenshots.length} screenshots for this session`);
+                    } else {
+                        alert('No screenshots found for this session');
+                    }
+                });
+        }
+    </script>
+</body>
+</html>
