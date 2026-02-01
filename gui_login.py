@@ -1,4 +1,4 @@
-# gui_login.py - UPDATED WITHOUT DEMO CREDENTIALS
+# gui_login.py - FIXED VERSION WITH WORKING TIMER
 import tkinter as tk
 from tkinter import ttk, messagebox
 import customtkinter as ctk
@@ -25,8 +25,8 @@ class LoginWindow:
         self.setup_ui()
         
     def open_web_registration(self):
-        web_url = "https://developer-activity-and-productivity.vercel.app/admin/registration"
         """Open web registration page in default browser"""
+        web_url = "https://developer-activity-and-productivity.vercel.app/admin/registration"
         import webbrowser
         # Open web page
         webbrowser.open(web_url)
@@ -46,13 +46,11 @@ class LoginWindow:
         ctk.CTkLabel(self.app, text="Email:").pack(pady=(10, 0))
         self.email_entry = ctk.CTkEntry(self.app, width=250)
         self.email_entry.pack(pady=5)
-        # REMOVED DEMO EMAIL - User will enter their own
         
         # Password
         ctk.CTkLabel(self.app, text="Password:").pack(pady=(10, 0))
         self.password_entry = ctk.CTkEntry(self.app, width=250, show="*")
         self.password_entry.pack(pady=5)
-        # REMOVED DEMO PASSWORD - User will enter their own
         
         # Login Button
         login_btn = ctk.CTkButton(self.app, text="Login", 
@@ -202,11 +200,11 @@ class RegisterWindow:
         self.status_label.configure(text="Registering...", text_color="yellow")
         self.app.update()
         
-        # Register user - FIXED: Using name instead of full_name parameter
+        # Register user
         success, message = self.auth.register_user(
             email=email,
             password=password,
-            name=name,  # Changed from full_name to name
+            name=name,
             company=company
         )
         
@@ -230,179 +228,403 @@ class DashboardWindow:
         self.user = user
         self.auth = auth
         self.login_window = login_window
-        self.timer = TimerTracker(user.id)
+        
+        # Instant-response timer
+        self.timer = TimerTracker(
+            user_id=user.id, 
+            user_email=user.email
+        )
+        
         self.app = ctk.CTk()
         self.app.title(f"Dashboard - {user.name}")
         self.app.geometry("800x600")
         
-        # Handle window close
         self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.timer_running = False
+        self.timer_paused = False
         self.update_thread = None
+        self.stop_update_thread = False
         
         self.setup_ui()
         self.start_timer_update()
+        print(f"⚡ Dashboard ready for {user.name}")
     
     def setup_ui(self):
-        # Header
+        """✅ COMPLETE UI SETUP - THIS WAS MISSING!"""
+        # Header Frame
         header_frame = ctk.CTkFrame(self.app)
         header_frame.pack(fill="x", padx=20, pady=20)
         
-        # User info
-        user_info = ctk.CTkLabel(header_frame, 
-                                text=f"👤 {self.user.name} ({self.user.role.upper()})",
-                                font=ctk.CTkFont(size=18, weight="bold"))
-        user_info.pack(side="left", padx=10)
+        # User Info
+        user_label = ctk.CTkLabel(
+            header_frame, 
+            text=f"👤 {self.user.name}",
+            font=ctk.CTkFont(size=18, weight="bold")
+        )
+        user_label.pack(side="left", padx=10)
         
-        # Company info (optional)
-        if self.user.company:
-            company_info = ctk.CTkLabel(header_frame, 
-                                       text=f"🏢 {self.user.company}",
-                                       font=ctk.CTkFont(size=14))
-            company_info.pack(side="left", padx=10)
+        # Email display
+        email_label = ctk.CTkLabel(
+            header_frame,
+            text=f"📧 {self.user.email}",
+            font=ctk.CTkFont(size=14)
+        )
+        email_label.pack(side="left", padx=10)
         
-        # Logout button
-        logout_btn = ctk.CTkButton(header_frame, text="Logout", 
-                                  command=self.logout, width=100)
+        # Logout Button
+        logout_btn = ctk.CTkButton(
+            header_frame, 
+            text="Logout", 
+            command=self.logout, 
+            width=100,
+            fg_color="#FF6B6B",
+            hover_color="#FF5252"
+        )
         logout_btn.pack(side="right", padx=10)
         
         # Timer Section
         timer_frame = ctk.CTkFrame(self.app)
         timer_frame.pack(pady=30, padx=50, fill="x")
         
-        ctk.CTkLabel(timer_frame, text="⏱️ Productivity Timer", 
-                    font=ctk.CTkFont(size=20, weight="bold")).pack(pady=10)
+        # Timer Title
+        timer_title = ctk.CTkLabel(
+            timer_frame, 
+            text="⏱️ Productivity Timer",
+            font=ctk.CTkFont(size=20, weight="bold")
+        )
+        timer_title.pack(pady=10)
         
-        # Timer display
-        self.timer_label = ctk.CTkLabel(timer_frame, text="00:00:00", 
-                                       font=ctk.CTkFont(size=48, weight="bold"))
+        # Timer Display (Large)
+        self.timer_label = ctk.CTkLabel(
+            timer_frame, 
+            text="00:00:00",
+            font=ctk.CTkFont(size=48, weight="bold"),
+            text_color="#4ECDC4"
+        )
         self.timer_label.pack(pady=20)
         
-        # Timer buttons
+        # Timer Buttons Frame
         btn_frame = ctk.CTkFrame(timer_frame)
         btn_frame.pack(pady=20)
         
-        self.start_btn = ctk.CTkButton(btn_frame, text="▶ Start", 
-                                      command=self.start_timer, width=100)
+        # Start Button
+        self.start_btn = ctk.CTkButton(
+            btn_frame, 
+            text="▶ Start", 
+            command=self.start_timer, 
+            width=120,
+            height=40,
+            fg_color="#1DD1A1",
+            hover_color="#10AC84",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
         self.start_btn.pack(side="left", padx=10)
         
-        self.pause_btn = ctk.CTkButton(btn_frame, text="⏸ Pause", 
-                                      command=self.pause_timer, width=100,
-                                      state="disabled")
+        # Pause Button
+        self.pause_btn = ctk.CTkButton(
+            btn_frame, 
+            text="⏸ Pause", 
+            command=self.pause_timer, 
+            width=120,
+            height=40,
+            fg_color="#FF9F43",
+            hover_color="#F39C12",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            state="disabled"
+        )
         self.pause_btn.pack(side="left", padx=10)
         
-        self.stop_btn = ctk.CTkButton(btn_frame, text="⏹ Stop", 
-                                     command=self.stop_timer, width=100,
-                                     state="disabled")
+        # Stop Button
+        self.stop_btn = ctk.CTkButton(
+            btn_frame, 
+            text="⏹ Stop", 
+            command=self.stop_timer, 
+            width=120,
+            height=40,
+            fg_color="#FF6B6B",
+            hover_color="#EE5A52",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            state="disabled"
+        )
         self.stop_btn.pack(side="left", padx=10)
         
-        # Status label
-        self.status_label = ctk.CTkLabel(timer_frame, text="Ready to start tracking", 
-                                       text_color="gray")
+        # Status Label
+        self.status_label = ctk.CTkLabel(
+            timer_frame, 
+            text="Ready to start tracking",
+            text_color="gray",
+            font=ctk.CTkFont(size=14)
+        )
         self.status_label.pack(pady=10)
         
         # Stats Section
         stats_frame = ctk.CTkFrame(self.app)
         stats_frame.pack(pady=20, padx=50, fill="x")
         
-        ctk.CTkLabel(stats_frame, text="📊 Session Statistics", 
-                    font=ctk.CTkFont(size=16, weight="bold")).pack(pady=10)
+        stats_title = ctk.CTkLabel(
+            stats_frame, 
+            text="📊 Session Statistics",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        stats_title.pack(pady=10)
         
-        # Stats grid
+        # Stats Grid
         stats_grid = ctk.CTkFrame(stats_frame)
         stats_grid.pack(pady=10)
         
         # Create stat labels
         self.stat_labels = {}
         stats = [
-            ("Mouse Events", "0"),
-            ("Keyboard Events", "0"),
-            ("Apps Tracked", "0"),
-            ("Screenshots", "0"),
-            ("Productivity", "0%")
+            ("Mouse Events", "0", "#54A0FF"),
+            ("Keyboard Events", "0", "#5F27CD"),
+            ("Apps Tracked", "0", "#00D2D3"),
+            ("Screenshots", "0", "#FF9FF3"),
+            ("Productivity", "0%", "#1DD1A1")
         ]
         
-        for i, (label, value) in enumerate(stats):
-            frame = ctk.CTkFrame(stats_grid)
-            frame.grid(row=i//3, column=i%3, padx=10, pady=5)
+        for i, (label, value, color) in enumerate(stats):
+            frame = ctk.CTkFrame(stats_grid, width=150, height=80)
+            frame.grid(row=i//3, column=i%3, padx=10, pady=5, sticky="nsew")
             
-            ctk.CTkLabel(frame, text=label, text_color="gray").pack()
-            self.stat_labels[label] = ctk.CTkLabel(frame, text=value, 
-                                                 font=ctk.CTkFont(weight="bold"))
-            self.stat_labels[label].pack()
+            # Label
+            ctk.CTkLabel(
+                frame, 
+                text=label, 
+                text_color="gray",
+                font=ctk.CTkFont(size=12)
+            ).pack(pady=(10, 0))
+            
+            # Value
+            self.stat_labels[label] = ctk.CTkLabel(
+                frame, 
+                text=value,
+                text_color=color,
+                font=ctk.CTkFont(size=18, weight="bold")
+            )
+            self.stat_labels[label].pack(pady=5)
+        
+        # Current Apps Display
+        apps_frame = ctk.CTkFrame(self.app)
+        apps_frame.pack(pady=20, padx=50, fill="x")
+        
+        apps_title = ctk.CTkLabel(
+            apps_frame, 
+            text="📱 Currently Tracked Apps",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        apps_title.pack(pady=10)
+        
+        self.apps_label = ctk.CTkLabel(
+            apps_frame, 
+            text="No apps being tracked yet",
+            text_color="gray",
+            font=ctk.CTkFont(size=14)
+        )
+        self.apps_label.pack(pady=5)
     
     def start_timer(self):
-        if self.timer.start():
-            self.timer_running = True
+        """Start timer with INSTANT UI feedback"""
+        try:
+            print("🟢 START clicked")
+            
+            # ✅ INSTANT UI UPDATE: Update buttons BEFORE starting timer
             self.start_btn.configure(state="disabled")
             self.pause_btn.configure(state="normal")
             self.stop_btn.configure(state="normal")
-            self.status_label.configure(text="Tracking active...", text_color="green")
+            self.status_label.configure(text="Starting...", text_color="yellow")
+            self.app.update_idletasks()  # Force immediate UI refresh
+            
+            # Start timer
+            if self.timer.start():
+                self.timer_running = True
+                self.timer_paused = False
+                self.status_label.configure(text="Tracking ACTIVE", text_color="green")
+                
+                # Immediate timer display
+                status = self.timer.get_current_time()
+                self.timer_label.configure(text=status["formatted_time"])
+                
+                print(f"✅ Timer started: {status['formatted_time']}")
+                return True
+            else:
+                # Rollback on failure
+                self.start_btn.configure(state="normal")
+                self.status_label.configure(text="Start failed", text_color="red")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Start error: {e}")
+            self.start_btn.configure(state="normal")
+            return False
     
     def pause_timer(self):
-        if self.timer.pause():
+        """Pause timer with INSTANT UI feedback"""
+        try:
+            print("⏸️ PAUSE clicked")
+            
+            # ✅ INSTANT UI UPDATE: Update buttons BEFORE pausing timer
             self.pause_btn.configure(state="disabled")
             self.start_btn.configure(text="▶ Resume", state="normal")
-            self.status_label.configure(text="Tracking paused", text_color="yellow")
+            self.status_label.configure(text="Pausing...", text_color="yellow")
+            self.app.update_idletasks()  # Force immediate UI refresh
+            
+            # Pause timer
+            if self.timer.pause():
+                self.timer_paused = True
+                self.status_label.configure(text="PAUSED", text_color="yellow")
+                
+                # Capture and display paused time
+                status = self.timer.get_current_time()
+                self.timer_label.configure(text=status["formatted_time"])
+                
+                print(f"✅ Timer paused: {status['formatted_time']}")
+                return True
+            else:
+                # Rollback on failure
+                self.pause_btn.configure(state="normal")
+                self.status_label.configure(text="Pause failed", text_color="red")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Pause error: {e}")
+            self.pause_btn.configure(state="normal")
+            return False
+    
+    def resume_timer(self):
+        """Resume timer with INSTANT UI feedback"""
+        try:
+            print("▶ RESUME clicked")
+            
+            # ✅ INSTANT UI UPDATE: Update buttons BEFORE resuming timer
+            self.start_btn.configure(state="disabled")
+            self.pause_btn.configure(state="normal")
+            self.status_label.configure(text="Resuming...", text_color="yellow")
+            self.app.update_idletasks()  # Force immediate UI refresh
+            
+            # Resume timer
+            if self.timer.resume():
+                self.timer_paused = False
+                self.status_label.configure(text="Tracking ACTIVE", text_color="green")
+                
+                print(f"✅ Timer resumed from paused state")
+                return True
+            else:
+                # Rollback on failure
+                self.start_btn.configure(state="normal", text="▶ Resume")
+                self.status_label.configure(text="Resume failed", text_color="red")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Resume error: {e}")
+            self.start_btn.configure(state="normal", text="▶ Resume")
+            return False
     
     def stop_timer(self):
-        session = self.timer.stop()
-        if session:
-            self.timer_running = False
-            self.start_btn.configure(text="▶ Start", state="normal")
-            self.pause_btn.configure(state="disabled")
-            self.stop_btn.configure(state="disabled")
+        """Stop timer with INSTANT UI feedback"""
+        try:
+            print("⏹️ STOP clicked")
             
-            # Update stats
-            self.stat_labels["Mouse Events"].configure(text=str(session.mouse_events))
-            self.stat_labels["Keyboard Events"].configure(text=str(session.keyboard_events))
-            self.stat_labels["Apps Tracked"].configure(text=str(session.app_switches))
-            self.stat_labels["Screenshots"].configure(text=str(session.screenshots_taken))
-            self.stat_labels["Productivity"].configure(text=f"{session.productivity_score:.1f}%")
+            # ✅ INSTANT UI UPDATE: Update buttons BEFORE stopping timer
+            self.status_label.configure(text="Stopping...", text_color="yellow")
+            self.app.update_idletasks()  # Force immediate UI refresh
             
-            self.status_label.configure(text="Session completed! Data saved to database.", 
-                                      text_color="green")
-            
-            messagebox.showinfo("Session Completed", 
-                              f"Session saved successfully!\n"
-                              f"Duration: {session.total_duration:.1f}s\n"
-                              f"Productivity: {session.productivity_score:.1f}%\n"
-                              f"Data saved to your account.")
+            session = self.timer.stop()
+            if session:
+                self.timer_running = False
+                self.timer_paused = False
+                
+                # Reset UI to initial state
+                self.start_btn.configure(text="▶ Start", state="normal")
+                self.pause_btn.configure(state="disabled")
+                self.stop_btn.configure(state="disabled")
+                self.timer_label.configure(text="00:00:00")
+                
+                # Update stats
+                self.stat_labels["Mouse Events"].configure(text=str(session.mouse_events))
+                self.stat_labels["Keyboard Events"].configure(text=str(session.keyboard_events))
+                self.stat_labels["Apps Tracked"].configure(text=str(session.app_switches))
+                self.stat_labels["Screenshots"].configure(text=str(session.screenshots_taken))
+                self.stat_labels["Productivity"].configure(text=f"{session.productivity_score:.1f}%")
+                
+                # Show final time
+                total_seconds = session.total_duration
+                hours = int(total_seconds // 3600)
+                minutes = int((total_seconds % 3600) // 60)
+                seconds = int(total_seconds % 60)
+                final_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                
+                self.status_label.configure(
+                    text=f"Session COMPLETE: {final_time}", 
+                    text_color="green"
+                )
+                
+                messagebox.showinfo("Session Completed", 
+                                  f"✅ Timer stopped\n"
+                                  f"⏱️  Total Time: {final_time}\n"
+                                  f"📊 Productivity: {session.productivity_score:.1f}%\n"
+                                  f"💾 Data saved successfully")
+                
+                print(f"✅ Timer stopped. Total: {final_time}")
+                return session
+                
+            return None
+                
+        except Exception as e:
+            print(f"❌ Stop error: {e}")
+            return None
     
     def start_timer_update(self):
-        """Start thread to update timer display"""
+        """Start timer display update thread"""
+        self.stop_update_thread = False
         self.update_thread = threading.Thread(target=self.update_timer_display, daemon=True)
         self.update_thread.start()
+        print("⏱️ Timer display thread started")
     
     def update_timer_display(self):
-        """Update timer display every second"""
-        while True:
-            if hasattr(self, 'timer_label') and self.timer_running:
-                status = self.timer.get_current_time()
-                self.app.after(0, self.timer_label.configure, {"text": status["formatted_time"]})
-            time.sleep(1)
+        """Update timer display - optimized for responsiveness"""
+        try:
+            while not self.stop_update_thread:
+                if self.timer_running:
+                    # Get current time
+                    status = self.timer.get_current_time()
+                    
+                    # Update display in main thread
+                    self.app.after(0, lambda s=status: self._update_display(s))
+                
+                # Update at 30 FPS for smooth display
+                time.sleep(0.033)
+                
+        except Exception as e:
+            print(f"⚠️ Timer display error: {e}")
+    
+    def _update_display(self, status):
+        """Update timer display safely"""
+        try:
+            self.timer_label.configure(text=status["formatted_time"])
+        except:
+            pass
     
     def logout(self):
+        """Clean logout"""
+        self.stop_update_thread = True
+        
         if self.timer_running:
-            response = messagebox.askyesno("Logout", 
-                                         "Timer is running. Stop tracking and logout?")
-            if response:
+            if messagebox.askyesno("Logout", "Stop timer and logout?"):
                 self.timer.stop()
             else:
                 return
         
         self.auth.logout()
         self.app.destroy()
-        # Show login window instead of creating a new one
         self.login_window.show()
     
     def on_closing(self):
-        """Handle window close event"""
+        """Window close handler"""
+        self.stop_update_thread = True
+        
         if self.timer_running:
-            response = messagebox.askyesno("Exit", 
-                                         "Timer is running. Stop tracking and exit?")
-            if response:
+            if messagebox.askyesno("Exit", "Stop timer and exit?"):
                 self.timer.stop()
             else:
                 return
@@ -414,7 +636,7 @@ class DashboardWindow:
     
     def run(self):
         self.app.mainloop()
-
+              
 def main():
     """Main entry point"""
     print("🚀 Starting Developer Productivity Tracker...")

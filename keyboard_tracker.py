@@ -1,12 +1,10 @@
-# keyboard_tracker.py
+# keyboard_tracker.py - NO JSON FILES VERSION
 from pynput import keyboard
 import time
-import json
 from datetime import datetime
 from dataclasses import dataclass, asdict
 from typing import List, Optional
 import threading
-import pandas as pd
 
 @dataclass
 class KeyEvent:
@@ -19,7 +17,7 @@ class KeyboardTracker:
     def __init__(self, save_interval=60):
         """
         Initialize keyboard tracker
-        save_interval: seconds between auto-saves
+        save_interval: seconds between auto-saves (Supabase only, NOT JSON)
         """
         self.events: List[KeyEvent] = []
         self.key_press_times = {}  # Track when keys were pressed
@@ -31,14 +29,16 @@ class KeyboardTracker:
         self.active_time = 0
         self.last_activity = time.time()
         
-        # Auto-save thread
-        self.save_interval = save_interval
-        self.save_thread = None
+        # NO AUTO-SAVE THREAD - We'll save to Supabase only
+        # Removed: self.save_thread = None
+        
+        print("⌨️ Keyboard tracker initialized (NO JSON files will be created)")
         
     def start_tracking(self):
-        """Start tracking keyboard activity"""
+        """Start tracking keyboard activity - NO AUTO JSON SAVE"""
         self.is_tracking = True
         print("⌨️ Keyboard tracking started...")
+        print("   ⚠️ NO JSON files will be created - data goes to Supabase only")
         
         # Create and start listener
         self.listener = keyboard.Listener(
@@ -47,17 +47,14 @@ class KeyboardTracker:
         )
         self.listener.start()
         
-        # Start auto-save thread
-        self.save_thread = threading.Thread(target=self._auto_save)
-        self.save_thread.daemon = True
-        self.save_thread.start()
+        # NO AUTO-SAVE THREAD FOR JSON FILES
         
     def stop_tracking(self):
-        """Stop tracking"""
+        """Stop tracking - NO JSON FILE CREATION"""
         self.is_tracking = False
         if self.listener:
             self.listener.stop()
-        print("⌨️ Keyboard tracking stopped")
+        print("⌨️ Keyboard tracking stopped (NO JSON files created)")
         
     def _on_press(self, key):
         """Handle key press event"""
@@ -106,18 +103,18 @@ class KeyboardTracker:
             duration=duration
         )
         self.events.append(event)
-        
-    def _auto_save(self):
-        """Auto-save logs at intervals"""
-        while self.is_tracking:
-            time.sleep(self.save_interval)
-            if self.events:
-                self.save_to_json(f"keyboard_logs_auto_{int(time.time())}.json")
-                
+    
     def get_stats(self):
         """Get keyboard statistics"""
         if not self.events:
-            return {"total_keys": 0, "active_time": 0}
+            return {
+                "total_keys_pressed": 0,
+                "unique_keys_used": 0,
+                "active_time_minutes": 0,
+                "words_per_minute": 0,
+                "key_events_recorded": 0,
+                "last_activity": "N/A"
+            }
             
         # Calculate active time (from first to last event)
         if len(self.events) >= 2:
@@ -157,44 +154,53 @@ class KeyboardTracker:
                 key_counts[key] = key_counts.get(key, 0) + 1
                 
         return dict(sorted(key_counts.items(), key=lambda x: x[1], reverse=True)[:20])
-        
-    def save_to_json(self, filename="keyboard_logs.json"):
-        """Save events to JSON file"""
-        data = {
-            "tracking_session": {
-                "start_time": self.events[0].timestamp if self.events else None,
-                "end_time": datetime.now().isoformat(),
-                "save_interval": self.save_interval
-            },
-            "events": [asdict(e) for e in self.events[-1000:]],  # Last 1000 events
-            "summary": self.get_stats(),
-            "heatmap": self.get_heatmap_data()
-        }
-        
-        with open(filename, 'w') as f:
-            json.dump(data, f, indent=2)
+    
+    def save_to_supabase(self, supabase_client, session_id: str, user_email: str):
+        """Save keyboard stats to Supabase (optional)"""
+        try:
+            if not self.events:
+                return None
+                
+            stats = self.get_stats()
+            heatmap = self.get_heatmap_data()
             
-        print(f"💾 Keyboard logs saved to {filename}")
-        return filename
-        
-    def export_to_csv(self, filename="keyboard_data.csv"):
-        """Export to CSV using pandas"""
-        if not self.events:
-            print("No data to export")
-            return
+            # Prepare data for Supabase
+            keyboard_data = {
+                "session_id": session_id,
+                "user_email": user_email,
+                "total_keys": stats["total_keys_pressed"],
+                "unique_keys": stats["unique_keys_used"],
+                "active_minutes": stats["active_time_minutes"],
+                "words_per_minute": stats["words_per_minute"],
+                "key_events": stats["key_events_recorded"],
+                "heatmap_data": str(heatmap),  # Convert dict to string
+                "tracked_at": datetime.now().isoformat()
+            }
             
-        df = pd.DataFrame([asdict(e) for e in self.events])
-        df.to_csv(filename, index=False)
-        print(f"📊 Data exported to CSV: {filename}")
-        return filename
+            # Save to Supabase if client provided
+            if supabase_client:
+                response = supabase_client.table("keyboard_stats").insert(keyboard_data).execute()
+                print(f"💾 Keyboard stats saved to Supabase")
+                return response
+                
+        except Exception as e:
+            print(f"⚠️ Supabase save error: {e}")
+            return None
+        
+    def clear_events(self):
+        """Clear events to free memory"""
+        self.events.clear()
+        self.key_press_times.clear()
+        print("🗑️ Keyboard events cleared from memory")
 
+# Test function without JSON creation
 def test_keyboard_tracker(duration=10):
-    """Test the keyboard tracker"""
-    print("Testing Keyboard Tracker...")
+    """Test the keyboard tracker - NO JSON FILES"""
+    print("Testing Keyboard Tracker (NO JSON FILES)...")
     print(f"Type something for {duration} seconds...")
     print("(Press ESC to stop early)\n")
     
-    tracker = KeyboardTracker(save_interval=5)
+    tracker = KeyboardTracker()
     tracker.start_tracking()
     
     # Monitor for ESC key to stop early
@@ -229,9 +235,8 @@ def test_keyboard_tracker(duration=10):
         for i, (key, count) in enumerate(list(heatmap.items())[:5]):
             print(f"  {i+1}. {key:10}: {count} presses")
     
-    # Save files
-    tracker.save_to_json()
-    tracker.export_to_csv()
+    print("\n✅ Test completed - NO JSON files were created!")
+    print("   Data is only stored in memory and can be saved to Supabase")
     
     return tracker
 
