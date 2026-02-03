@@ -174,4 +174,3 @@ def test_mouse_tracker():
 
 if __name__ == "__main__":
     test_mouse_tracker()
-    
