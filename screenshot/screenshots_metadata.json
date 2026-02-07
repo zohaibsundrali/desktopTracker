@@ -1,0 +1,47 @@
+{
+  "capture_settings": {
+    "output_dir": "screenshot",
+    "compress": true,
+    "quality": 86,
+    "max_screenshots": 1000,
+    "interval_mode": "random_1_60_seconds"
+  },
+  "statistics": {
+    "total_captured": 3,
+    "in_memory": 3,
+    "total_size_kb": 607.14,
+    "last_capture": "2026-02-05T16:14:30.028189",
+    "output_directory": "screenshot",
+    "current_delay": null,
+    "capture_active": false
+  },
+  "screenshots": [
+    {
+      "timestamp": "2026-02-05T16:13:26.587403",
+      "filename": "screenshot_20260205_161326.jpg",
+      "filepath": "screenshot\\screenshot_20260205_161326.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 189.73,
+      "app_active": "powershell.exe"
+    },
+    {
+      "timestamp": "2026-02-05T16:13:40.907030",
+      "filename": "screenshot_20260205_161340.jpg",
+      "filepath": "screenshot\\screenshot_20260205_161340.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 205.77,
+      "app_active": "powershell.exe"
+    },
+    {
+      "timestamp": "2026-02-05T16:14:30.028189",
+      "filename": "screenshot_20260205_161430.jpg",
+      "filepath": "screenshot\\screenshot_20260205_161430.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 211.64,
+      "app_active": "powershell.exe"
+    }
+  ]
+}

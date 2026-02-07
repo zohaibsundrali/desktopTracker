@@ -1,0 +1,4 @@
+timestamp,filename,filepath,width,height,size_kb,app_active
+2026-02-05T16:11:36.582692,screenshot_20260205_161136.jpg,test_screenshots\screenshot_20260205_161136.jpg,1600,900,198.56,powershell.exe
+2026-02-05T16:11:41.937717,screenshot_20260205_161141.jpg,test_screenshots\screenshot_20260205_161141.jpg,1600,900,243.28,powershell.exe
+2026-02-05T16:11:53.617154,screenshot_20260205_161153.jpg,test_screenshots\screenshot_20260205_161153.jpg,1600,900,256.34,powershell.exe
