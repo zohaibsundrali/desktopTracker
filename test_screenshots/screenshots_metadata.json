@@ -1,0 +1,29 @@
+{
+  "capture_settings": {
+    "output_dir": "test_screenshots",
+    "compress": true,
+    "quality": 85,
+    "max_screenshots": 100,
+    "interval_mode": "random_1_60_seconds"
+  },
+  "statistics": {
+    "total_captured": 1,
+    "in_memory": 1,
+    "total_size_kb": 139.28,
+    "last_capture": "2026-02-07T11:36:38.748130",
+    "output_directory": "test_screenshots",
+    "current_delay": null,
+    "capture_active": false
+  },
+  "screenshots": [
+    {
+      "timestamp": "2026-02-07T11:36:38.748130",
+      "filename": "screenshot_20260207_113638.jpg",
+      "filepath": "test_screenshots\\screenshot_20260207_113638.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 139.28,
+      "app_active": null
+    }
+  ]
+}

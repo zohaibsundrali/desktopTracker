@@ -180,7 +180,7 @@ class UniversalAppMonitor:
         self.app_start_times.clear()
     
     def _save_to_database(self):
-        """Save app usage data to Supabase - NO JSON FILE"""
+        """Save app usage data to Supabase - FIXED VERSION"""
         if not self.supabase or not self.app_usage:
             return
         
@@ -207,7 +207,8 @@ class UniversalAppMonitor:
                         'duration_seconds': usage['duration_seconds'],
                         'duration_minutes': usage['duration_minutes'],
                         'tracked_at': datetime.now().isoformat(),
-                        'is_new_app': True  # All apps are new since tracking started
+                        # ❌ REMOVE THIS LINE: 'is_new_app': True
+                        # OR add it to your database schema first
                     })
                     
                     # Mark as saved
@@ -215,18 +216,24 @@ class UniversalAppMonitor:
                 
                 # Insert batch
                 if db_records:
-                    response = self.supabase.table("app_usage").insert(db_records).execute()
-                    
-                    if hasattr(response, 'data'):
-                        print(f"💾 Saved {len(db_records)} app records to database")
-                    else:
-                        print(f"⚠️ Failed to save batch to database")
+                    try:
+                        response = self.supabase.table("app_usage").insert(db_records).execute()
+                        
+                        if hasattr(response, 'data'):
+                            print(f"💾 Saved {len(db_records)} app records to database")
+                        else:
+                            print(f"⚠️ Failed to save batch to database")
+                            print(f"   Response: {response}")
+                    except Exception as db_error:
+                        print(f"❌ Database insert error: {db_error}")
                 
                 # Small delay between batches
                 time.sleep(0.1)
                 
         except Exception as e:
             print(f"❌ Database save error: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _print_detailed_summary(self):
         """Print comprehensive summary of tracked apps"""

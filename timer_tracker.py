@@ -246,33 +246,63 @@ class TimerTracker:
     # ========== TRACKER METHODS ==========
     
     def _start_trackers_async(self, session_id: str):
+        """Start all trackers with better error handling"""
+        print(f"🚀 Starting trackers for session: {session_id}")
+        
         try:
-            # App monitor
-            self.app_monitor = UniversalAppMonitor(
-                user_email=self.user_email,
-                session_id=session_id
-            )
-            self.app_monitor.start_tracking()
+            # 1. App Monitor
+            try:
+                self.app_monitor = UniversalAppMonitor(
+                    user_email=self.user_email,
+                    session_id=session_id
+                )
+                self.app_monitor.start_tracking()
+                print("✅ App monitor: ACTIVE")
+            except Exception as e:
+                print(f"⚠️ App monitor failed: {e}")
+                self.app_monitor = None
             
-            # Other trackers
-            from mouse_tracker import MouseTracker
-            from keyboard_tracker import KeyboardTracker
-            from screenshot_capture import ScreenshotCapture
+            # 2. Mouse Tracker
+            try:
+                from mouse_tracker import MouseTracker
+                self.mouse_tracker = MouseTracker(idle_threshold=2.0)
+                self.mouse_tracker.start_tracking()
+                print("✅ Mouse tracker: ACTIVE")
+            except Exception as e:
+                print(f"⚠️ Mouse tracker failed: {e}")
+                self.mouse_tracker = None
             
-            self.mouse_tracker = MouseTracker(idle_threshold=2.0)
-            self.keyboard_tracker = KeyboardTracker(save_interval=30)
-            self.screenshot_capture = ScreenshotCapture(
-                interval=60,
-                output_dir=f"screenshots/{self.user_id}"
-            )
+            # 3. Keyboard Tracker
+            try:
+                from keyboard_tracker import KeyboardTracker
+                self.keyboard_tracker = KeyboardTracker(save_interval=30)
+                self.keyboard_tracker.start_tracking()
+                print("✅ Keyboard tracker: ACTIVE")
+                print("   ⌨️  Start typing to see keyboard events")
+            except Exception as e:
+                print(f"⚠️ Keyboard tracker failed: {e}")
+                self.keyboard_tracker = None
             
-            self.mouse_tracker.start_tracking()
-            self.keyboard_tracker.start_tracking()
-            self.screenshot_capture.start_capture()
+            # 4. Screenshot Capture - FIXED VERSION
+            try:
+                from screenshot_capture import ScreenshotCapture
+                self.screenshot_capture = ScreenshotCapture(
+                    output_dir=f"screenshots/{self.user_id}"
+                )
+                self.screenshot_capture.start_capture()
+                print("✅ Screenshot capture: ACTIVE")
+                print("   📸 Screenshots will be taken randomly")
+            except Exception as e:
+                print(f"⚠️ Screenshot capture failed: {e}")
+                self.screenshot_capture = None
             
-            print("✅ Trackers started (NO JSON files will be created)")
+            print(f"🎯 All trackers initialized for {self.user_email}")
+            
         except Exception as e:
-            print(f"⚠️ Tracker start error: {e}")
+            print(f"❌ Tracker initialization error: {e}")
+            import traceback
+            traceback.print_exc()
+    
     
     def _pause_trackers_async(self):
         try:
