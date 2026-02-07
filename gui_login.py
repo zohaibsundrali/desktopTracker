@@ -1,4 +1,4 @@
-# gui_login.py - FIXED VERSION WITH WORKING TIMER
+# gui_login.py - COMPLETE FIXED VERSION (UPDATED)
 import tkinter as tk
 from tkinter import ttk, messagebox
 import customtkinter as ctk
@@ -243,15 +243,15 @@ class DashboardWindow:
         
         self.timer_running = False
         self.timer_paused = False
-        self.update_thread = None
         self.stop_update_thread = False
+        self.update_counter = 0
         
         self.setup_ui()
         self.start_timer_update()
         print(f"⚡ Dashboard ready for {user.name}")
     
     def setup_ui(self):
-        """✅ COMPLETE UI SETUP - THIS WAS MISSING!"""
+        """Complete UI Setup"""
         # Header Frame
         header_frame = ctk.CTkFrame(self.app)
         header_frame.pack(fill="x", padx=20, pady=20)
@@ -540,12 +540,29 @@ class DashboardWindow:
                 self.stop_btn.configure(state="disabled")
                 self.timer_label.configure(text="00:00:00")
                 
-                # Update stats
+                # ✅ UPDATE ALL STATS - INCLUDING APPS
                 self.stat_labels["Mouse Events"].configure(text=str(session.mouse_events))
                 self.stat_labels["Keyboard Events"].configure(text=str(session.keyboard_events))
                 self.stat_labels["Apps Tracked"].configure(text=str(session.app_switches))
                 self.stat_labels["Screenshots"].configure(text=str(session.screenshots_taken))
                 self.stat_labels["Productivity"].configure(text=f"{session.productivity_score:.1f}%")
+                
+                # ✅ Show final apps summary
+                if hasattr(session, 'apps_used') and session.apps_used != "[]":
+                    try:
+                        import ast
+                        apps_list = ast.literal_eval(session.apps_used)
+                        if apps_list:
+                            apps_text = "📱 Apps used:\n"
+                            for i, app in enumerate(apps_list[:5]):
+                                apps_text += f"• {app}\n"
+                            
+                            if len(apps_list) > 5:
+                                apps_text += f"• ... and {len(apps_list) - 5} more"
+                            
+                            self.apps_label.configure(text=apps_text)
+                    except:
+                        pass
                 
                 # Show final time
                 total_seconds = session.total_duration
@@ -563,6 +580,7 @@ class DashboardWindow:
                                   f"✅ Timer stopped\n"
                                   f"⏱️  Total Time: {final_time}\n"
                                   f"📊 Productivity: {session.productivity_score:.1f}%\n"
+                                  f"📱 Apps Used: {session.app_switches}\n"
                                   f"💾 Data saved successfully")
                 
                 print(f"✅ Timer stopped. Total: {final_time}")
@@ -574,36 +592,102 @@ class DashboardWindow:
             print(f"❌ Stop error: {e}")
             return None
     
-    def start_timer_update(self):
-        """Start timer display update thread"""
-        self.stop_update_thread = False
-        self.update_thread = threading.Thread(target=self.update_timer_display, daemon=True)
-        self.update_thread.start()
-        print("⏱️ Timer display thread started")
-    
-    def update_timer_display(self):
-        """Update timer display - optimized for responsiveness"""
+    def update_apps_display(self):
+        """Update the currently tracked apps display in real-time"""
         try:
-            while not self.stop_update_thread:
-                if self.timer_running:
-                    # Get current time
-                    status = self.timer.get_current_time()
-                    
-                    # Update display in main thread
-                    self.app.after(0, lambda s=status: self._update_display(s))
+            if self.timer_running and hasattr(self.timer, 'app_monitor') and self.timer.app_monitor:
+                # Get current apps from timer tracker
+                current_apps = self.timer.app_monitor.get_current_apps()
                 
-                # Update at 30 FPS for smooth display
-                time.sleep(0.033)
+                if current_apps:
+                    # Format apps list (show only app name without .exe)
+                    apps_text = ""
+                    for i, app in enumerate(current_apps[:5]):  # Show top 5
+                        app_name = app['app_name'].replace('.exe', '').replace('.EXE', '')
+                        apps_text += f"{i+1}. {app_name[:20]} - {app['duration_minutes']:.1f} min\n"
+                    
+                    if len(current_apps) > 5:
+                        apps_text += f"... and {len(current_apps) - 5} more"
+                    
+                    self.apps_label.configure(text=apps_text)
+                else:
+                    self.apps_label.configure(text="Scanning for apps...")
+            
+        except Exception as e:
+            print(f"⚠️ Apps display update error: {e}")
+    
+    def update_real_time_stats(self):
+        """Update live statistics during tracking"""
+        try:
+            if self.timer_running:
+                # Update mouse events
+                if hasattr(self.timer, 'mouse_tracker') and self.timer.mouse_tracker:
+                    mouse_stats = self.timer.mouse_tracker.get_stats()
+                    if 'total_events' in mouse_stats:
+                        self.stat_labels["Mouse Events"].configure(
+                            text=str(mouse_stats['total_events'])
+                        )
+                
+                # Update keyboard events
+                if hasattr(self.timer, 'keyboard_tracker') and self.timer.keyboard_tracker:
+                    keyboard_stats = self.timer.keyboard_tracker.get_stats()
+                    if 'total_keys_pressed' in keyboard_stats:
+                        self.stat_labels["Keyboard Events"].configure(
+                            text=str(keyboard_stats['total_keys_pressed'])
+                        )
+                
+                # Update screenshots
+                if hasattr(self.timer, 'screenshot_capture') and self.timer.screenshot_capture:
+                    screenshot_stats = self.timer.screenshot_capture.get_stats()
+                    if 'total_captured' in screenshot_stats:
+                        self.stat_labels["Screenshots"].configure(
+                            text=str(screenshot_stats['total_captured'])
+                        )
+                
+                # Update apps tracked
+                if hasattr(self.timer, 'app_monitor') and self.timer.app_monitor:
+                    app_summary = self.timer.app_monitor.get_session_summary()
+                    if 'total_sessions' in app_summary:
+                        self.stat_labels["Apps Tracked"].configure(
+                            text=str(app_summary['total_sessions'])
+                        )
+                    
+        except Exception as e:
+            print(f"⚠️ Real-time stats error: {e}")
+    
+    def start_timer_update(self):
+        """Start timer updates WITHOUT threads (safer for Tkinter)"""
+        print("⏱️ Starting timer display (thread-safe mode)...")
+        self.stop_update_thread = False
+        self.update_counter = 0
+        self._schedule_timer_update()
+    
+    def _schedule_timer_update(self):
+        """Schedule the next timer update"""
+        if self.stop_update_thread:
+            return
+        
+        try:
+            if self.timer_running:
+                # Update timer display
+                status = self.timer.get_current_time()
+                self.timer_label.configure(text=status["formatted_time"])
+                
+                # Update apps display every 3 seconds
+                if self.update_counter % 30 == 0:  # ~3 seconds (30 * 100ms)
+                    self.update_apps_display()
+                
+                # Update stats every 5 seconds
+                if self.update_counter % 50 == 0:  # ~5 seconds (50 * 100ms)
+                    self.update_real_time_stats()
+                
+                self.update_counter += 1
                 
         except Exception as e:
-            print(f"⚠️ Timer display error: {e}")
-    
-    def _update_display(self, status):
-        """Update timer display safely"""
-        try:
-            self.timer_label.configure(text=status["formatted_time"])
-        except:
-            pass
+            print(f"⚠️ Timer update error: {e}")
+        
+        # Schedule next update in 100ms
+        self.app.after(100, self._schedule_timer_update)
     
     def logout(self):
         """Clean logout"""
@@ -636,7 +720,7 @@ class DashboardWindow:
     
     def run(self):
         self.app.mainloop()
-              
+
 def main():
     """Main entry point"""
     print("🚀 Starting Developer Productivity Tracker...")
