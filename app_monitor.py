@@ -49,7 +49,6 @@ import threading
 import time
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, List, Optional
 
 # ── Third-party ───────────────────────────────────────────────────────────────
@@ -596,6 +595,21 @@ class AppMonitor:
             ],
             "generated_at": datetime.now().isoformat(),
         }
+
+    # ✅ CONVENIENCE METHODS: Aliases for backwards compatibility
+    def get_session_summary(self) -> Dict:
+        """
+        Alias for get_summary() - returns session summary.
+        Provided for API compatibility.
+        """
+        return self.get_summary()
+    
+    def get_current_apps(self) -> List[Dict]:
+        """
+        Alias for live_apps() - returns currently tracked applications.
+        Provided for API compatibility.
+        """
+        return self.live_apps()
 
     # ─────────────────────────────────────────────────────────────────────────
     #  POLLING THREAD
