@@ -6,7 +6,8 @@ from dataclasses import dataclass, asdict
 from typing import Optional, Dict, List
 from supabase import create_client
 from config import config
-from universal_app_monitor import UniversalAppMonitor
+from app_monitor import AppMonitor
+from session_report import SessionReport, create_session_report
 
 @dataclass
 class TimerState:
@@ -106,6 +107,7 @@ class TimerTracker:
         self.user_email = user_email or f"{user_id}@example.com"
         self.state = TimerState()
         self.session: Optional[TrackingSession] = None
+        self.session_report: Optional[SessionReport] = None
         self.supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
         
         self.instant_timer = InstantTimer()
@@ -212,6 +214,12 @@ class TimerTracker:
                 
                 self._collect_session_data()
                 
+                # Generate session report BEFORE saving
+                self._generate_session_report()
+                
+                # Display the report
+                self._display_session_report()
+                
                 threading.Thread(target=self._save_session_final, daemon=True).start()
             
             self._stop_trackers_sync()
@@ -250,14 +258,14 @@ class TimerTracker:
         print(f"🚀 Starting trackers for session: {session_id}")
         
         try:
-            # 1. App Monitor
+            # 1. App Monitor - FIXED: Using correct start() method
             try:
-                self.app_monitor = UniversalAppMonitor(
-                    user_email=self.user_email,
-                    session_id=session_id
+                self.app_monitor = AppMonitor(
+                    user_email=self.user_email
                 )
-                self.app_monitor.start_tracking()
+                self.app_monitor.start()
                 print("✅ App monitor: ACTIVE")
+                print("   📱 Tracking application usage")
             except Exception as e:
                 print(f"⚠️ App monitor failed: {e}")
                 self.app_monitor = None
@@ -266,7 +274,7 @@ class TimerTracker:
             try:
                 from mouse_tracker import MouseTracker
                 self.mouse_tracker = MouseTracker(idle_threshold=2.0)
-                self.mouse_tracker.start_tracking()
+                self.mouse_tracker.start()
                 print("✅ Mouse tracker: ACTIVE")
             except Exception as e:
                 print(f"⚠️ Mouse tracker failed: {e}")
@@ -283,7 +291,7 @@ class TimerTracker:
                 print(f"⚠️ Keyboard tracker failed: {e}")
                 self.keyboard_tracker = None
             
-            # 4. Screenshot Capture - FIXED VERSION
+            # 4. Screenshot Capture
             try:
                 from screenshot_capture import ScreenshotCapture
                 self.screenshot_capture = ScreenshotCapture(
@@ -303,92 +311,166 @@ class TimerTracker:
             import traceback
             traceback.print_exc()
     
-    
     def _pause_trackers_async(self):
+        """Pause all trackers - AppMonitor uses stop() since it doesn't have native pause"""
         try:
+            # App Monitor - stop on pause
             if self.app_monitor:
-                self.app_monitor.stop_tracking()
+                self.app_monitor.stop()
+                print("⏸️ App monitor: PAUSED")
+            
+            # Mouse Tracker
             if self.mouse_tracker:
-                self.mouse_tracker.stop_tracking()
+                self.mouse_tracker.stop()
+                print("⏸️ Mouse tracker: PAUSED")
+            
+            # Keyboard Tracker
             if self.keyboard_tracker:
                 self.keyboard_tracker.stop_tracking()
+                print("⏸️ Keyboard tracker: PAUSED")
+            
+            # Screenshot Capture
             if self.screenshot_capture:
                 self.screenshot_capture.stop_capture()
+                print("⏸️ Screenshot capture: PAUSED")
             
-            print("⏸️ Trackers paused")
+            print("⏸️ All trackers paused")
         except Exception as e:
             print(f"⚠️ Tracker pause error: {e}")
     
     def _resume_trackers_async(self):
+        """Resume all trackers - AppMonitor uses start() since it doesn't have native resume"""
         try:
+            # App Monitor - restart on resume
             if self.app_monitor:
-                self.app_monitor.start_tracking()
+                self.app_monitor.start()
+                print("▶️ App monitor: RESUMED")
+            
+            # Mouse Tracker
             if self.mouse_tracker:
-                self.mouse_tracker.start_tracking()
+                self.mouse_tracker.start()
+                print("▶️ Mouse tracker: RESUMED")
+            
+            # Keyboard Tracker
             if self.keyboard_tracker:
                 self.keyboard_tracker.start_tracking()
+                print("▶️ Keyboard tracker: RESUMED")
+            
+            # Screenshot Capture
             if self.screenshot_capture:
                 self.screenshot_capture.start_capture()
+                print("▶️ Screenshot capture: RESUMED")
             
-            print("▶️ Trackers resumed")
+            print("▶️ All trackers resumed")
         except Exception as e:
             print(f"⚠️ Tracker resume error: {e}")
     
     def _stop_trackers_sync(self):
         """Stop all trackers - NO JSON EXPORT"""
         try:
+            # App Monitor - FIXED: Using correct stop() method
             if self.app_monitor:
-                self.app_monitor.stop_tracking()
-                # ❌ NO JSON EXPORT HERE
+                self.app_monitor.stop()
+                print("🛑 App monitor: STOPPED")
             
+            # Mouse Tracker
             if self.mouse_tracker:
-                self.mouse_tracker.stop_tracking()
-                # ❌ NO JSON SAVE
+                self.mouse_tracker.stop()
+                print("🛑 Mouse tracker: STOPPED")
             
+            # Keyboard Tracker
             if self.keyboard_tracker:
                 self.keyboard_tracker.stop_tracking()
-                # ❌ NO JSON SAVE
+                print("🛑 Keyboard tracker: STOPPED")
             
+            # Screenshot Capture
             if self.screenshot_capture:
                 self.screenshot_capture.stop_capture()
-                # ❌ NO METADATA SAVE
+                print("🛑 Screenshot capture: STOPPED")
             
-            print("🛑 Trackers stopped (NO JSON files created)")
+            print("🛑 All trackers stopped (NO JSON files created)")
         except Exception as e:
             print(f"⚠️ Tracker stop error: {e}")
     
+    
     def _collect_session_data(self):
+        """Collect data from all trackers for the session - IMPROVED VERSION"""
         try:
-            # App data
+            # 🎯 APP DATA - Now properly gets data from AppMonitor
             if self.app_monitor:
-                summary = self.app_monitor.get_session_summary()
-                
-                # Check if summary has valid data
-                if summary.get('status') == 'no_apps_detected':
-                    print("ℹ️ No new apps detected during session")
+                try:
+                    app_summary = self.app_monitor.get_summary()
+                    self.session.apps_used = str(
+                        [app["app"] for app in app_summary.get("top_apps", [])]
+                    )
+                    self.session.app_usage_summary = str(app_summary)
+                    self.session.app_switches = len(app_summary.get("top_apps", []))
+                    
+                    print(f"   📱 Applications tracked: {self.session.app_switches}")
+                    print(f"      Total app time: {app_summary.get('total_minutes', 0):.2f} minutes")
+                    for app in app_summary.get("top_apps", [])[:5]:
+                        print(f"        - {app['app']}: {app['minutes']:.2f} min")
+                except Exception as e:
+                    print(f"   ⚠️ Could not get app monitor summary: {e}")
                     self.session.apps_used = "[]"
                     self.session.app_usage_summary = "{}"
                     self.session.app_switches = 0
-                else:
-                    self.session.apps_used = str(summary.get('apps_used', []))
-                    self.session.app_usage_summary = str(summary)
-                    self.session.app_switches = summary.get('total_sessions', 0)
+            else:
+                print("   ⚠️ App monitor not available")
+                self.session.apps_used = "[]"
+                self.session.app_usage_summary = "{}"
+                self.session.app_switches = 0
             
-            # Activity data
+            # Activity data from mouse tracker
             if self.mouse_tracker:
-                self.session.mouse_events = self.mouse_tracker.get_stats().get('total_events', 0)
+                try:
+                    stats = self.mouse_tracker.get_stats()
+                    self.session.mouse_events = stats.get('total_events', 0)
+                    print(f"   🖱️ Mouse events: {self.session.mouse_events}")
+                except AttributeError:
+                    print("   ⚠️ Mouse tracker doesn't have get_stats() method")
+                except Exception as e:
+                    print(f"   ⚠️ Could not get mouse stats: {e}")
+            else:
+                print("   ⚠️ Mouse tracker not available")
             
+            # Activity data from keyboard tracker
             if self.keyboard_tracker:
-                self.session.keyboard_events = self.keyboard_tracker.get_stats().get('total_keys_pressed', 0)
+                try:
+                    stats = self.keyboard_tracker.get_stats()
+                    self.session.keyboard_events = stats.get('total_keys_pressed', 0)
+                    print(f"   ⌨️ Keyboard events: {self.session.keyboard_events}")
+                except AttributeError:
+                    print("   ⚠️ Keyboard tracker doesn't have get_stats() method")
+                except Exception as e:
+                    print(f"   ⚠️ Could not get keyboard stats: {e}")
+            else:
+                print("   ⚠️ Keyboard tracker not available")
             
+            # Activity data from screenshot capture
             if self.screenshot_capture:
-                self.session.screenshots_taken = self.screenshot_capture.get_stats().get('total_captured', 0)
+                try:
+                    stats = self.screenshot_capture.get_stats()
+                    self.session.screenshots_taken = stats.get('total_captured', 0)
+                    print(f"   📸 Screenshots taken: {self.session.screenshots_taken}")
+                except AttributeError:
+                    print("   ⚠️ Screenshot capture doesn't have get_stats() method")
+                except Exception as e:
+                    print(f"   ⚠️ Could not get screenshot stats: {e}")
+            else:
+                print("   ⚠️ Screenshot capture not available")
             
-            # Productivity score
+            # Calculate productivity score based on collected data
             self._calculate_productivity_score()
+            
+            # Summary of collected data
+            print(f"📊 Session data collected successfully")
             
         except Exception as e:
             print(f"⚠️ Data collection error: {e}")
+            import traceback
+            traceback.print_exc()
+    
     
     def _calculate_productivity_score(self):
         try:
@@ -411,6 +493,91 @@ class TimerTracker:
         except Exception as e:
             print(f"⚠️ Productivity calculation error: {e}")
             self.session.productivity_score = 0
+    
+    def _generate_session_report(self):
+        """Generate comprehensive session report from collected data"""
+        try:
+            if not self.session:
+                return
+            
+            print("\n🔄 Generating session report...")
+            
+            # Gather all tracker data
+            app_monitor_data = None
+            mouse_stats = None
+            keyboard_stats = None
+            screenshot_stats = None
+            
+            if self.app_monitor:
+                try:
+                    app_monitor_data = self.app_monitor.get_summary()
+                except Exception as e:
+                    print(f"   ⚠️ AppMonitor data unavailable: {e}")
+            
+            if self.mouse_tracker:
+                try:
+                    mouse_stats = self.mouse_tracker.get_stats()
+                except Exception as e:
+                    print(f"   ⚠️ Mouse tracker stats unavailable: {e}")
+            
+            if self.keyboard_tracker:
+                try:
+                    keyboard_stats = self.keyboard_tracker.get_stats()
+                except Exception as e:
+                    print(f"   ⚠️ Keyboard tracker stats unavailable: {e}")
+            
+            if self.screenshot_capture:
+                try:
+                    screenshot_stats = self.screenshot_capture.get_stats()
+                except Exception as e:
+                    print(f"   ⚠️ Screenshot capture stats unavailable: {e}")
+            
+            # Create session report
+            self.session_report = create_session_report(
+                session_data={
+                    "session_id": self.session.session_id,
+                    "user_email": self.session.user_email,
+                    "start_time": self.session.start_time,
+                    "end_time": self.session.end_time,
+                    "total_duration": self.session.total_duration,
+                    "status": self.session.status
+                },
+                app_monitor_data=app_monitor_data,
+                mouse_stats=mouse_stats,
+                keyboard_stats=keyboard_stats,
+                screenshot_stats=screenshot_stats,
+                productivity_score=self.session.productivity_score
+            )
+            
+            print("✅ Session report generated successfully")
+            
+        except Exception as e:
+            print(f"❌ Report generation error: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _display_session_report(self):
+        """Display formatted session report to console"""
+        try:
+            if not self.session_report:
+                return
+            
+            print("\n")
+            print(self.session_report.generate_text_report())
+            print()
+            
+        except Exception as e:
+            print(f"⚠️ Error displaying report: {e}")
+    
+    def get_session_report(self) -> Optional[SessionReport]:
+        """Return the generated session report"""
+        return self.session_report
+    
+    def export_report_json(self) -> Optional[dict]:
+        """Export session report as JSON-serializable dictionary"""
+        if self.session_report:
+            return self.session_report.to_dict()
+        return None
     
     def _save_session_final(self):
         """Save final session to database - FIXED VERSION"""

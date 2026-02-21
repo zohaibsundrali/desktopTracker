@@ -1,0 +1,71 @@
+{
+  "session_id": "mouse_session_1771656658521",
+  "start_time": "2026-02-21T11:50:58.522031",
+  "end_time": "2026-02-21T11:51:27.804634",
+  "duration_seconds": 29.26,
+  "total_events": 140,
+  "move_events": 140,
+  "click_events": 0,
+  "scroll_events": 0,
+  "total_distance": 9706.41,
+  "average_velocity": 0,
+  "max_velocity": 8157.94,
+  "active_percentage": 92.6,
+  "idle_percentage": 7.4,
+  "productivity_score": 73.0,
+  "click_distribution": {
+    "left": 0,
+    "right": 0,
+    "middle": 0,
+    "other": 0
+  },
+  "scroll_distribution": {
+    "up": 0,
+    "down": 0,
+    "left": 0,
+    "right": 0
+  },
+  "quadrant_distribution": {
+    "bottom_left": 27,
+    "top_left": 61,
+    "top_right": 51,
+    "bottom_right": 1
+  },
+  "time_buckets": {
+    "2026-02-21 11:50": {
+      "move_events": 0,
+      "click_events": 0,
+      "scroll_events": 0,
+      "total_events": 0,
+      "distance": 0.0,
+      "active_seconds": 1.38,
+      "idle_seconds": 0.0,
+      "active_percentage": 100.0,
+      "productivity_score": 0.0,
+      "avg_velocity": 0.0,
+      "quadrant_distribution": {}
+    },
+    "2026-02-21 11:51": {
+      "move_events": 140,
+      "click_events": 0,
+      "scroll_events": 0,
+      "total_events": 140,
+      "distance": 9706.41,
+      "active_seconds": 52.76,
+      "idle_seconds": 4.3,
+      "active_percentage": 92.5,
+      "productivity_score": 67.3,
+      "avg_velocity": 1018.26,
+      "quadrant_distribution": {
+        "bottom_left": 27,
+        "top_left": 61,
+        "top_right": 51,
+        "bottom_right": 1
+      }
+    }
+  },
+  "peak_activity_minute": "2026-02-21 11:51",
+  "most_active_quadrant": "top_left",
+  "screen_resolution": "1600x900",
+  "timestamp": "2026-02-21T11:51:27.804688"
+}

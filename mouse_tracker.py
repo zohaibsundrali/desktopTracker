@@ -167,6 +167,26 @@ class MouseTracker:
         print(f"   Summary Mode: {'ON (No raw CSV)' if save_summary_only else 'OFF'}")
         print(f"   Auto Delete CSV: {'ON' if auto_delete_csv else 'OFF'}")
     
+    # ✅ WRAPPER METHODS: For compatibility with timer_tracker.py
+    def start(self) -> bool:
+        """Wrapper method for start_tracking() - used by TimerTracker"""
+        try:
+            self.start_tracking()
+            return True
+        except Exception as e:
+            print(f"❌ Start wrapper error: {e}")
+            return False
+    
+    def stop(self) -> bool:
+        """Wrapper method for stop_tracking() - used by TimerTracker"""
+        try:
+            if self.is_tracking:
+                self.stop_tracking()
+            return True
+        except Exception as e:
+            print(f"❌ Stop wrapper error: {e}")
+            return False
+    
     def start_tracking(self):
         """Start tracking mouse activity with comprehensive monitoring"""
         if self.is_tracking:
@@ -863,7 +883,7 @@ class MouseTrackerWithPynput(MouseTracker):
         super().__init__(**kwargs)
         self.listener = None
         
-    def start_tracking(self):
+    def start(self):
         """Start tracking with pynput listener"""
         super().start_tracking()
         
@@ -883,7 +903,7 @@ class MouseTrackerWithPynput(MouseTracker):
             print("⚠️ Pynput not installed. Using basic tracking only.")
             print("   Install with: pip install pynput")
     
-    def stop_tracking(self):
+    def stop(self):
         """Stop tracking and pynput listener"""
         if self.listener:
             self.listener.stop()

@@ -1,4 +1,4 @@
-# gui_login.py - COMPLETE FIXED VERSION (UPDATED)
+# gui_login.py - COMPLETE FIXED VERSION
 import tkinter as tk
 from tkinter import ttk, messagebox
 import customtkinter as ctk
@@ -8,6 +8,7 @@ import threading
 import time
 from datetime import datetime
 import sys
+import ast
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -28,9 +29,7 @@ class LoginWindow:
         """Open web registration page in default browser"""
         web_url = "https://developer-activity-and-productivity.vercel.app/admin/registration"
         import webbrowser
-        # Open web page
         webbrowser.open(web_url)
-        # Update status
         self.status_label.configure(
             text="Redirected to admin registration page", 
             text_color="blue"
@@ -86,11 +85,6 @@ class LoginWindow:
         else:
             self.status_label.configure(text=message, text_color="red")
     
-    def open_register(self):
-        self.app.withdraw()
-        register_window = RegisterWindow(self)
-        register_window.app.mainloop()
-    
     def open_dashboard(self, user: User):
         self.app.withdraw()
         dashboard = DashboardWindow(user, self.auth, self)
@@ -108,120 +102,6 @@ class LoginWindow:
     def run(self):
         self.app.mainloop()
 
-class RegisterWindow:
-    def __init__(self, login_window):
-        self.login_window = login_window
-        self.auth = login_window.auth
-        self.app = ctk.CTk()
-        self.app.title("Register - Productivity Tracker")
-        self.app.geometry("500x600")
-        
-        self.setup_ui()
-    
-    def setup_ui(self):
-        # Title
-        title = ctk.CTkLabel(self.app, text="📝 Register", 
-                           font=ctk.CTkFont(size=24, weight="bold"))
-        title.pack(pady=20)
-        
-        # Full Name
-        ctk.CTkLabel(self.app, text="Full Name:").pack(pady=(10, 0))
-        self.name_entry = ctk.CTkEntry(self.app, width=300)
-        self.name_entry.pack(pady=5)
-        
-        # Company
-        ctk.CTkLabel(self.app, text="Company/Organization:").pack(pady=(10, 0))
-        self.company_entry = ctk.CTkEntry(self.app, width=300)
-        self.company_entry.pack(pady=5)
-        
-        # Email
-        ctk.CTkLabel(self.app, text="Email:").pack(pady=(10, 0))
-        self.email_entry = ctk.CTkEntry(self.app, width=300)
-        self.email_entry.pack(pady=5)
-        
-        # Password
-        ctk.CTkLabel(self.app, text="Password:").pack(pady=(10, 0))
-        self.password_entry = ctk.CTkEntry(self.app, width=300, show="*")
-        self.password_entry.pack(pady=5)
-        
-        # Confirm Password
-        ctk.CTkLabel(self.app, text="Confirm Password:").pack(pady=(10, 0))
-        self.confirm_entry = ctk.CTkEntry(self.app, width=300, show="*")
-        self.confirm_entry.pack(pady=5)
-        
-        # Role selection
-        ctk.CTkLabel(self.app, text="Role:").pack(pady=(10, 0))
-        self.role_var = tk.StringVar(value="developer")
-        role_frame = ctk.CTkFrame(self.app)
-        role_frame.pack(pady=5)
-        
-        ctk.CTkRadioButton(role_frame, text="Developer", 
-                          variable=self.role_var, value="developer").pack(side=tk.LEFT, padx=10)
-        ctk.CTkRadioButton(role_frame, text="Admin", 
-                          variable=self.role_var, value="admin").pack(side=tk.LEFT, padx=10)
-        
-        # Register Button
-        register_btn = ctk.CTkButton(self.app, text="Register", 
-                                   command=self.register, width=150)
-        register_btn.pack(pady=20)
-        
-        # Back to Login
-        back_btn = ctk.CTkButton(self.app, text="Back to Login", 
-                               command=self.back_to_login, width=150)
-        back_btn.pack(pady=5)
-        
-        # Status label
-        self.status_label = ctk.CTkLabel(self.app, text="", 
-                                       text_color="gray")
-        self.status_label.pack(pady=10)
-    
-    def register(self):
-        # Get form data
-        name = self.name_entry.get()
-        company = self.company_entry.get()
-        email = self.email_entry.get()
-        password = self.password_entry.get()
-        confirm = self.confirm_entry.get()
-        role = self.role_var.get()
-        
-        # Validation
-        if not all([name, email, password, confirm]):
-            messagebox.showerror("Error", "All fields are required")
-            return
-        
-        if password != confirm:
-            messagebox.showerror("Error", "Passwords do not match")
-            return
-        
-        if len(password) < 6:
-            messagebox.showerror("Error", "Password must be at least 6 characters")
-            return
-        
-        self.status_label.configure(text="Registering...", text_color="yellow")
-        self.app.update()
-        
-        # Register user
-        success, message = self.auth.register_user(
-            email=email,
-            password=password,
-            name=name,
-            company=company
-        )
-        
-        if success:
-            self.status_label.configure(text="Registered successfully!", text_color="green")
-            messagebox.showinfo("Registration Successful", 
-                              "Registration successful! You can now login.")
-            self.app.after(3000, self.back_to_login)
-        else:
-            self.status_label.configure(text=message, text_color="red")
-    
-    def back_to_login(self):
-        self.app.destroy()
-        self.login_window.app.deiconify()
-    
-    def run(self):
-        self.app.mainloop()
 
 class DashboardWindow:
     def __init__(self, user: User, auth: AuthManager, login_window):
@@ -428,12 +308,12 @@ class DashboardWindow:
         try:
             print("🟢 START clicked")
             
-            # ✅ INSTANT UI UPDATE: Update buttons BEFORE starting timer
+            # INSTANT UI UPDATE: Update buttons BEFORE starting timer
             self.start_btn.configure(state="disabled")
             self.pause_btn.configure(state="normal")
             self.stop_btn.configure(state="normal")
             self.status_label.configure(text="Starting...", text_color="yellow")
-            self.app.update_idletasks()  # Force immediate UI refresh
+            self.app.update_idletasks()
             
             # Start timer
             if self.timer.start():
@@ -463,11 +343,11 @@ class DashboardWindow:
         try:
             print("⏸️ PAUSE clicked")
             
-            # ✅ INSTANT UI UPDATE: Update buttons BEFORE pausing timer
+            # INSTANT UI UPDATE: Update buttons BEFORE pausing timer
             self.pause_btn.configure(state="disabled")
             self.start_btn.configure(text="▶ Resume", state="normal")
             self.status_label.configure(text="Pausing...", text_color="yellow")
-            self.app.update_idletasks()  # Force immediate UI refresh
+            self.app.update_idletasks()
             
             # Pause timer
             if self.timer.pause():
@@ -496,11 +376,11 @@ class DashboardWindow:
         try:
             print("▶ RESUME clicked")
             
-            # ✅ INSTANT UI UPDATE: Update buttons BEFORE resuming timer
+            # INSTANT UI UPDATE: Update buttons BEFORE resuming timer
             self.start_btn.configure(state="disabled")
             self.pause_btn.configure(state="normal")
             self.status_label.configure(text="Resuming...", text_color="yellow")
-            self.app.update_idletasks()  # Force immediate UI refresh
+            self.app.update_idletasks()
             
             # Resume timer
             if self.timer.resume():
@@ -525,9 +405,9 @@ class DashboardWindow:
         try:
             print("⏹️ STOP clicked")
             
-            # ✅ INSTANT UI UPDATE: Update buttons BEFORE stopping timer
+            # INSTANT UI UPDATE: Update buttons BEFORE stopping timer
             self.status_label.configure(text="Stopping...", text_color="yellow")
-            self.app.update_idletasks()  # Force immediate UI refresh
+            self.app.update_idletasks()
             
             session = self.timer.stop()
             if session:
@@ -540,17 +420,16 @@ class DashboardWindow:
                 self.stop_btn.configure(state="disabled")
                 self.timer_label.configure(text="00:00:00")
                 
-                # ✅ UPDATE ALL STATS - INCLUDING APPS
+                # UPDATE ALL STATS - INCLUDING APPS
                 self.stat_labels["Mouse Events"].configure(text=str(session.mouse_events))
                 self.stat_labels["Keyboard Events"].configure(text=str(session.keyboard_events))
                 self.stat_labels["Apps Tracked"].configure(text=str(session.app_switches))
                 self.stat_labels["Screenshots"].configure(text=str(session.screenshots_taken))
                 self.stat_labels["Productivity"].configure(text=f"{session.productivity_score:.1f}%")
                 
-                # ✅ Show final apps summary
+                # Show final apps summary
                 if hasattr(session, 'apps_used') and session.apps_used != "[]":
                     try:
-                        import ast
                         apps_list = ast.literal_eval(session.apps_used)
                         if apps_list:
                             apps_text = "📱 Apps used:\n"
@@ -596,15 +475,14 @@ class DashboardWindow:
         """Update the currently tracked apps display in real-time"""
         try:
             if self.timer_running and hasattr(self.timer, 'app_monitor') and self.timer.app_monitor:
-                # Get current apps from timer tracker
-                current_apps = self.timer.app_monitor.get_current_apps()
+                # Use live_apps() instead of get_current_apps()
+                current_apps = self.timer.app_monitor.live_apps()
                 
                 if current_apps:
-                    # Format apps list (show only app name without .exe)
                     apps_text = ""
                     for i, app in enumerate(current_apps[:5]):  # Show top 5
                         app_name = app['app_name'].replace('.exe', '').replace('.EXE', '')
-                        apps_text += f"{i+1}. {app_name[:20]} - {app['duration_minutes']:.1f} min\n"
+                        apps_text += f"{i+1}. {app_name[:20]} - {app['duration_min']:.1f} min\n"
                     
                     if len(current_apps) > 5:
                         apps_text += f"... and {len(current_apps) - 5} more"
@@ -644,9 +522,9 @@ class DashboardWindow:
                             text=str(screenshot_stats['total_captured'])
                         )
                 
-                # Update apps tracked
+                # Update apps tracked using get_summary() instead of get_session_summary()
                 if hasattr(self.timer, 'app_monitor') and self.timer.app_monitor:
-                    app_summary = self.timer.app_monitor.get_session_summary()
+                    app_summary = self.timer.app_monitor.get_summary()
                     if 'total_sessions' in app_summary:
                         self.stat_labels["Apps Tracked"].configure(
                             text=str(app_summary['total_sessions'])

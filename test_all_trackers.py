@@ -66,7 +66,7 @@ def test_screenshot_capture():
 def test_app_monitor():
     print("Testing App Monitor...")
     try:
-        from universal_app_monitor import UniversalAppMonitor
+        from app_monitor import UniversalAppMonitor
         monitor = UniversalAppMonitor(
             user_email="test@example.com",
             session_id="test_session"

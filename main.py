@@ -1,4 +1,4 @@
-# main.py
+# main.py - FIXED VERSION
 import sys
 import os
 from dotenv import load_dotenv
