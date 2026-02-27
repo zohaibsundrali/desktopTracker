@@ -7,32 +7,13 @@
     "interval_mode": "random_1_60_seconds"
   },
   "statistics": {
-    "total_captured": 2,
-    "in_memory": 2,
-    "total_size_kb": 318.8,
-    "last_capture": "2026-02-21T11:51:27.302113",
+    "total_captured": 0,
+    "in_memory": 0,
+    "total_size_kb": 0,
+    "last_capture": null,
     "output_directory": "screenshots/6b592864-970a-4041-ba73-f0664cb09807",
     "current_delay": null,
     "capture_active": false
   },
-  "screenshots": [
-    {
-      "timestamp": "2026-02-21T11:51:04.941206",
-      "filename": "screenshot_20260221_115104.jpg",
-      "filepath": "screenshots/6b592864-970a-4041-ba73-f0664cb09807\\screenshot_20260221_115104.jpg",
-      "width": 1600,
-      "height": 900,
-      "size_kb": 143.2,
-      "app_active": null
-    },
-    {
-      "timestamp": "2026-02-21T11:51:27.302113",
-      "filename": "screenshot_20260221_115127.jpg",
-      "filepath": "screenshots/6b592864-970a-4041-ba73-f0664cb09807\\screenshot_20260221_115127.jpg",
-      "width": 1600,
-      "height": 900,
-      "size_kb": 175.6,
-      "app_active": null
-    }
-  ]
+  "screenshots": []
 }

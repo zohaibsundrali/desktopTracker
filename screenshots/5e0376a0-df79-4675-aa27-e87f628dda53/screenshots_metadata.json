@@ -1,0 +1,38 @@
+{
+  "capture_settings": {
+    "output_dir": "screenshots/5e0376a0-df79-4675-aa27-e87f628dda53",
+    "compress": true,
+    "quality": 85,
+    "max_screenshots": 100,
+    "interval_mode": "random_1_60_seconds"
+  },
+  "statistics": {
+    "total_captured": 2,
+    "in_memory": 2,
+    "total_size_kb": 263.19,
+    "last_capture": "2026-02-22T14:49:28.392906",
+    "output_directory": "screenshots/5e0376a0-df79-4675-aa27-e87f628dda53",
+    "current_delay": null,
+    "capture_active": false
+  },
+  "screenshots": [
+    {
+      "timestamp": "2026-02-22T14:49:10.227768",
+      "filename": "screenshot_20260222_144910.jpg",
+      "filepath": "screenshots/5e0376a0-df79-4675-aa27-e87f628dda53\\screenshot_20260222_144910.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 131.72,
+      "app_active": null
+    },
+    {
+      "timestamp": "2026-02-22T14:49:28.392906",
+      "filename": "screenshot_20260222_144928.jpg",
+      "filepath": "screenshots/5e0376a0-df79-4675-aa27-e87f628dda53\\screenshot_20260222_144928.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 131.47,
+      "app_active": null
+    }
+  ]
+}

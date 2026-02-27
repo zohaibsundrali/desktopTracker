@@ -1,0 +1,29 @@
+{
+  "capture_settings": {
+    "output_dir": "abc",
+    "compress": true,
+    "quality": 85,
+    "max_screenshots": 100,
+    "interval_mode": "random_1_60_seconds"
+  },
+  "statistics": {
+    "total_captured": 1,
+    "in_memory": 1,
+    "total_size_kb": 133.68,
+    "last_capture": "2026-02-22T16:31:12.662172",
+    "output_directory": "abc",
+    "current_delay": null,
+    "capture_active": false
+  },
+  "screenshots": [
+    {
+      "timestamp": "2026-02-22T16:31:12.662172",
+      "filename": "Photos_20260222_163112.jpg",
+      "filepath": "abc\\Photos_20260222_163112.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 133.68,
+      "app_active": null
+    }
+  ]
+}

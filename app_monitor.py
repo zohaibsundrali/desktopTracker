@@ -1,19 +1,30 @@
 """
-app_monitor.py  —  Production v2.0
-====================================
+app_monitor.py  —  Production v3.0 (Enhanced Tracking)
+========================================================
 Developer Activity Tracker for Windows / Linux desktops.
 
 PURPOSE
 -------
-Silently tracks every desktop application a developer opens during a work
+Comprehensively tracks every desktop application a developer opens during a work
 session. Records app name, window title, start time, end time, and duration.
-Automatically syncs to Supabase (cloud) every 60 seconds.
+Automatically syncs to Supabase (cloud) every 60 seconds with robust error handling.
+
+KEY FEATURES
+------------
+  ✅ Tracks all applications including Visual Studio Code, browsers (Chrome, Firefox, Edge)
+  ✅ Paint.exe, Photos.exe, and all desktop applications
+  ✅ Real-time error logging and alerting
+  ✅ Automatic retry with exponential backoff for failed syncs
+  ✅ Comprehensive error handling for Supabase failures
+  ✅ Per-app error tracking and reporting
+  ✅ Data integrity validation before upload
 
 ARCHITECTURE
 ------------
-  AppSession   — data model for one app open/close lifecycle
-  CloudDB      — Supabase storage layer
-  AppMonitor   — orchestrator: polling thread, detection, storage, reporting
+  AppSession   — data model for one app open/close lifecycle with error tracking
+  CloudDB      — Supabase storage layer with retry logic & error handling
+  AppMonitor   — orchestrator: polling thread, detection, storage, reporting, alerts
+  ErrorTracker — centralized error logging and alerting system
 
 QUICK START
 -----------
@@ -37,6 +48,15 @@ QUICK START
 REQUIREMENTS
 ------------
   pip install psutil pywin32 python-dotenv supabase
+
+SUPPORTED APPLICATIONS
+-----------
+  Development: Visual Studio Code, Python, Node.js, Git, Docker
+  Browsers: Chrome, Firefox, Edge, Safari, Opera, Brave
+  Office: Word, Excel, PowerPoint, Outlook
+  Media: Photoshop, Illustrator, Premiere, VLC, Spotify
+  System: Explorer, Command Prompt, Settings, Calculator
+  And all other running applications!
 """
 
 # ── Standard library ──────────────────────────────────────────────────────────
@@ -94,6 +114,95 @@ log = logging.getLogger("app_monitor")
 # ─────────────────────────────────────────────────────────────────────────────
 POLL_INTERVAL   = 2.0    # seconds between process scans
 AUTO_SAVE_SECS  = 60.0   # auto-flush to Supabase every N seconds
+MAX_RETRIES     = 3      # maximum retry attempts for failed uploads
+RETRY_BACKOFF   = 2.0    # exponential backoff multiplier (2s, 4s, 8s)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  ERROR TRACKING & ALERTING SYSTEM
+# ═════════════════════════════════════════════════════════════════════════════
+
+class ErrorTracker:
+    """
+    Centralized error logging and alerting system.
+    Tracks errors, failures, and alerts for debugging and monitoring.
+    """
+    
+    def __init__(self):
+        self.errors: List[Dict] = []
+        self.failed_apps: Dict[str, int] = {}  # app_name -> error_count
+        self.supabase_failures: List[Dict] = []
+        self.lock = threading.Lock()
+    
+    def log_error(self, error_type: str, app_name: str = None, 
+                  message: str = "", details: str = ""):
+        """Log an error with context"""
+        with self.lock:
+            error_entry = {
+                'timestamp': datetime.now().isoformat(),
+                'type': error_type,  # 'app_detection', 'supabase', 'general'
+                'app_name': app_name,
+                'message': message,
+                'details': details
+            }
+            self.errors.append(error_entry)
+            
+            # Track per-app failures
+            if app_name and error_type == 'app_detection':
+                self.failed_apps[app_name] = self.failed_apps.get(app_name, 0) + 1
+            
+            # Log for debugging
+            log_msg = f"{error_type}"
+            if app_name:
+                log_msg += f" [{app_name}]"
+            if message:
+                log_msg += f": {message}"
+            
+            log.error(log_msg)
+            if details:
+                log.debug(f"  Details: {details}")
+    
+    def log_supabase_failure(self, app_names: List[str], error: str, attempt: int = 1):
+        """Log Supabase sync failure"""
+        with self.lock:
+            failure = {
+                'timestamp': datetime.now().isoformat(),
+                'app_count': len(app_names),
+                'app_names': app_names,
+                'error': error,
+                'retry_attempt': attempt
+            }
+            self.supabase_failures.append(failure)
+            log.warning(f"Supabase sync failed (attempt {attempt}): {len(app_names)} apps")
+    
+    def log_supabase_success(self, count: int):
+        """Log successful Supabase sync"""
+        log.info(f"Supabase: synced {count} app session(s)")
+    
+    def get_summary(self) -> Dict:
+        """Get error summary for reporting"""
+        with self.lock:
+            return {
+                'total_errors': len(self.errors),
+                'failed_apps': dict(self.failed_apps),
+                'supabase_failures': len(self.supabase_failures),
+                'recent_errors': self.errors[-5:] if self.errors else []
+            }
+    
+    def alert(self, severity: str, message: str):
+        """
+        Send alert for critical issues.
+        Severity: 'critical', 'warning', 'info'
+        """
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        alert_symbol = '🔴' if severity == 'critical' else '🟡' if severity == 'warning' else 'ℹ️'
+        print(f"  {alert_symbol} ALERT [{severity.upper()}] {timestamp}: {message}", flush=True)
+        log.warning(f"ALERT [{severity}]: {message}")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  CONSTANTS
+# ═════════════════────────────────────────────────────────────────────────────
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -169,10 +278,123 @@ _IGNORE: frozenset = frozenset({
     "microsoftedgeupdate.exe",
     # Installers
     "msiexec.exe", "trustedinstaller.exe", "tiworker.exe",
+    # More service processes
+    "rundll32.exe", "taskhost.exe", "taskeng.exe", "schtasks.exe",
+    "regsvcs.exe", "regasm.exe", "cscript.exe", "wscript.exe",
+    # More background services
+    "themeserver.exe", "themes.exe", "mpnotify.exe",
+    "rundll32.exe", "ntvdm.exe", "lpksetup.exe",
+    "vssvc.exe",              # volume shadow copy
+    "tcpsvcs.exe", "snmp.exe", "ipv6.exe",
+    "netsh.exe", "netstat.exe", "nslookup.exe",
+    # Windows Update
+    "wuauserv.exe", "trustedinstaller.exe",
+    # More OEM/Intel
+    "intelcpusetup.exe", "intelcpumonitor.exe",
+    "intelhaxm.exe", "intelhaxmservice.exe",
+    # More cloud/sync
+    "skydrive.exe", "onedriveupdater.exe",
+    # System processes
+    "nvvk32wrap.exe",         # NVIDIA wrapper
+    "igfxcui.exe",            # Intel graphics
+    "mcshield.exe",           # McAfee
+    "avgidsagent.exe",        # AVG
+    "avguard.exe",            # AVG Guard
+    # Process utilities
+    "taskmgr.exe",            # only ignore in baseline; tracked as foreground
     # Linux kernel threads
     "kthreadd", "ksoftirqd", "migration",
     "rcu_bh", "rcu_sched", "kworker", "kswapd",
 })
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  USER APPLICATION WHITELIST
+#  These applications are important for productivity tracking and should be
+#  included even if they momentarily don't have a visible window.
+# ═════════════════════════════════════════════════════════════════════════════
+_USER_APPS_WHITELIST: frozenset = frozenset({
+    # Development & Editors
+    "code.exe", "vscode.exe",                      # Visual Studio Code
+    "devenv.exe",                                  # Visual Studio
+    "python.exe", "python3.exe",                   # Python
+    "node.exe", "npm.cmd", "npx.cmd",            # Node.js
+    "git.exe", "gitbash.exe",                     # Git
+    "docker.exe", "docker-desktop.exe",           # Docker
+    
+    # Browsers
+    "chrome.exe", "firefox.exe", "msedge.exe",   # Major browsers
+    "opera.exe", "brave.exe", "iexplore.exe",    # Other browsers
+    "safari.exe",                                 # Safari
+    
+    # File Explorer & System UI (user-initiated)
+    "explorer.exe",                               # File Explorer
+    "mmc.exe",                                    # Management Console
+    "compmgmt.msc", "services.msc",              # System utilities
+    "taskmgr.exe",                               # Task Manager
+    "regedit.exe", "regedt32.exe",              # Registry Editor
+    "msconfig.exe",                              # System Configuration
+    "diskmgmt.msc",                              # Disk Management
+    
+    # Office & Documents
+    "winword.exe", "wordpad.exe",                # Word processors
+    "excel.exe",                                  # Excel
+    "powerpnt.exe",                              # PowerPoint
+    "outlook.exe", "onenote.exe",               # Outlook & OneNote
+    "notepad.exe", "notepad++.exe",            # Notepad variants
+    "notepad2.exe", "gedit.exe",                # Other editors
+    "sublimetext.exe",                           # Sublime Text
+    "atom.exe",                                  # Atom
+    
+    # Communication
+    "slack.exe", "teams.exe", "discord.exe",    # Chat/collaboration
+    "thunderbird.exe", "mailbird.exe",          # Email clients
+    "zoom.exe", "skype.exe",                    # Video conferencing
+    
+    # Media & Graphics
+    "paint.exe", "mspaint.exe",                  # Paint
+    "photos.exe",                                # Photos
+    "photoshop.exe", "illustrator.exe",         # Adobe
+    "gimp.exe",                                  # GIMP
+    "inkscape.exe",                              # Inkscape
+    "vlc.exe", "wmplayer.exe",                  # Media players
+    "spotify.exe", "itunes.exe",                # Music
+    
+    # Development Tools
+    "gradle.exe", "maven.exe",                   # Build tools
+    "cmake.exe",                                 # CMake
+    "perl.exe", "ruby.exe",                     # Interpreters
+    "java.exe", "javaw.exe",                    # Java
+    
+    # Terminals & Shells
+    "cmd.exe", "powershell.exe", "pwsh.exe",   # Shells
+    "bash.exe", "wsl.exe",                      # WSL
+    "iterm2.exe", "hyper.exe", "kitty.exe",    # Terminal emulators
+    "mucommander.exe",                           # File manager
+    
+    # Database & Tools
+    "sqlite.exe", "mysql.exe", "psql.exe",     # Databases
+    "mongod.exe",                                # MongoDB
+    "redis.exe",                                 # Redis
+    
+    # Other Productivity
+    "notion.exe", "obsidian.exe",               # Note-taking
+    "figma.exe", "sketch.exe",                  # Design tools
+    "postman.exe", "insomnia.exe",              # API tools
+    "dbeaver.exe", "navicat.exe",               # DB clients
+    "fiddler.exe", "wireshark.exe",             # Network
+    "7zfm.exe", "winrar.exe",                   # Archivers
+})
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  SYSTEM DIRECTORY PATHS (to filter out system processes)
+# ═════════════════════════════════════════════════════════════════════════════
+_SYSTEM_PATHS = (
+    "c:\\windows\\system32",
+    "c:\\windows\\syswow64",
+    "c:\\windows\\winsxs",
+    "c:\\program files\\windows",
+    "c:\\program files (x86)\\windows",
+)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -260,8 +482,14 @@ class AppSession:
     )
 
     def __init__(self, app_name: str, window_title: str, start_time: datetime):
-        self.app_name          = app_name
-        self.window_title      = window_title
+        # Validate required fields
+        if not app_name or not isinstance(app_name, str):
+            raise ValueError(f"Invalid app_name: must be non-empty string, got {app_name!r}")
+        if not start_time or not isinstance(start_time, datetime):
+            raise ValueError(f"Invalid start_time: must be datetime, got {start_time!r}")
+        
+        self.app_name          = app_name.strip()
+        self.window_title      = window_title.strip() if window_title else ""
         self.start_time        = start_time
         self.end_time: Optional[datetime] = None
         self.duration_seconds  = 0.0
@@ -342,58 +570,150 @@ class CloudDB:
         return self._client is not None
 
     def save(self, sessions: List[AppSession],
-             user_login: str, user_email: str, session_id: str) -> int:
+             user_login: str, user_email: str, session_id: str,
+             error_tracker: Optional['ErrorTracker'] = None) -> int:
         """
-        Batch-INSERT pending sessions to Supabase app_usage table.
+        Batch-INSERT pending sessions to Supabase app_usage table with retry logic.
+        
         Returns number of rows successfully synced.
+        Features:
+          - Exponential backoff retry
+          - Column compatibility handling
+          - Error tracking and logging
+          - Data validation
         """
         if not self.available:
+            if error_tracker:
+                error_tracker.alert('critical', 'Supabase client not available')
             return 0
 
         pending = [s for s in sessions if not s.saved_cloud]
         if not pending:
             return 0
 
+        # Validate data integrity before upload
+        for session in pending:
+            if not session.app_name or not session.start_time:
+                if error_tracker:
+                    error_tracker.log_error('app_detection', session.app_name,
+                                          'Invalid session data', 
+                                          f'Missing required fields')
+                log.warning(f"Skipping invalid session: {session}")
+                session.saved_cloud = True
+                continue
+
         records = [s.to_cloud_dict(user_login, user_email, session_id)
-                   for s in pending]
+                   for s in pending if not s.saved_cloud]
+        
+        if not records:
+            return 0
 
         if not self._has_user_login:
             for r in records:
                 r.pop("user_login", None)
 
-        try:
-            resp = self._client.table("app_usage").insert(records).execute()
-            if getattr(resp, "data", None):
-                for s in pending:
-                    s.saved_cloud = True
-                log.info("Supabase: synced %d row(s)", len(pending))
-                return len(pending)
-            log.warning("Supabase insert returned no data")
-            return 0
-
-        except Exception as exc:
-            err = str(exc)
-            # Schema mismatch: user_login column missing in remote table
-            if "PGRST204" in err and "user_login" in err:
-                self._has_user_login = False
-                log.warning(
-                    "Supabase: user_login column missing. "
-                    "Run `python app_monitor.py --schema` to get the DDL fix."
-                )
-                for r in records:
-                    r.pop("user_login", None)
-                try:
-                    resp2 = (self._client.table("app_usage")
-                             .insert(records).execute())
-                    if getattr(resp2, "data", None):
-                        for s in pending:
+        # Retry logic with exponential backoff
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                resp = self._client.table("app_usage").insert(records).execute()
+                
+                if getattr(resp, "data", None):
+                    # Mark successfully synced sessions
+                    for s in pending:
+                        if not s.saved_cloud:
                             s.saved_cloud = True
-                        return len(pending)
-                except Exception as exc2:
-                    log.error("Supabase fallback failed: %s", exc2)
-            else:
-                log.error("Supabase insert error: %s", exc)
-            return 0
+                    
+                    if error_tracker:
+                        error_tracker.log_supabase_success(len(pending))
+                    else:
+                        log.info(f"Supabase: synced {len(pending)} app session(s)")
+                    
+                    return len(pending)
+                
+                # No data returned
+                if error_tracker:
+                    error_tracker.log_supabase_failure(
+                        [s.app_name for s in pending],
+                        "Insert returned no data",
+                        attempt
+                    )
+                else:
+                    log.warning(f"Supabase insert returned no data (attempt {attempt})")
+                
+                # Retry on next attempt
+                if attempt < MAX_RETRIES:
+                    wait_time = RETRY_BACKOFF ** attempt
+                    log.info(f"Retrying in {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                    continue
+                
+                return 0
+
+            except Exception as exc:
+                err = str(exc)
+                
+                # Schema mismatch: user_login column missing
+                if "PGRST204" in err and "user_login" in err:
+                    if self._has_user_login:  # First occurrence
+                        self._has_user_login = False
+                        log.warning("user_login column missing — retrying without it...")
+                        
+                        for r in records:
+                            r.pop("user_login", None)
+                        
+                        # Retry immediately without user_login
+                        try:
+                            resp2 = self._client.table("app_usage").insert(records).execute()
+                            if getattr(resp2, "data", None):
+                                for s in pending:
+                                    if not s.saved_cloud:
+                                        s.saved_cloud = True
+                                if error_tracker:
+                                    error_tracker.log_supabase_success(len(pending))
+                                else:
+                                    log.info(f"Supabase: synced {len(pending)} app session(s)")
+                                return len(pending)
+                        except Exception as exc2:
+                            log.error(f"Column removal retry failed: {exc2}")
+                
+                # Network/connection error
+                elif "ConnectionError" in str(type(exc)) or "timeout" in err.lower():
+                    if error_tracker:
+                        error_tracker.log_supabase_failure(
+                            [s.app_name for s in pending],
+                            f"Connection error: {err[:50]}",
+                            attempt
+                        )
+                    
+                    if attempt < MAX_RETRIES:
+                        wait_time = RETRY_BACKOFF ** attempt
+                        log.info(f"Connection error — retrying in {wait_time:.1f}s...")
+                        time.sleep(wait_time)
+                        continue
+                
+                # Other errors
+                else:
+                    if error_tracker:
+                        error_tracker.log_supabase_failure(
+                            [s.app_name for s in pending],
+                            f"Error: {err[:80]}",
+                            attempt
+                        )
+                    else:
+                        log.error(f"Supabase insert failed (attempt {attempt}): {err}")
+                    
+                    if attempt < MAX_RETRIES:
+                        wait_time = RETRY_BACKOFF ** attempt
+                        log.info(f"Retrying in {wait_time:.1f}s...")
+                        time.sleep(wait_time)
+                        continue
+        
+        # All retries exhausted
+        if error_tracker:
+            error_tracker.alert('critical', 
+                               f'Failed to sync {len(pending)} app sessions after {MAX_RETRIES} attempts')
+        
+        return 0
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -447,9 +767,11 @@ class AppMonitor:
         self._active:   Dict[str, AppSession] = {}   # currently open apps
         self._done:     List[AppSession]      = []   # finalized sessions
         self._baseline: frozenset             = frozenset()
+        self._last_save_time: float           = time.time()
 
-        # ── Storage layer ──────────────────────────────────────────────────
+        # ── Storage & error tracking ───────────────────────────────────────
         self._cloud = CloudDB()
+        self._error_tracker = ErrorTracker()  # ✅ NEW: Error tracking
 
         log.info(
             "AppMonitor initialized | login=%s | email=%s | session=%s",
@@ -474,22 +796,13 @@ class AppMonitor:
             log.warning("Already running — ignoring duplicate start()")
             return
 
-        # Print identity block so integration tools can log it
-        print(f"\n  ┌{'─' * 56}┐")
-        print(f"  │  DEVELOPER ACTIVITY TRACKER                          │")
-        print(f"  ├{'─' * 56}┤")
-        print(f"  │  User      : {self.user_login:<42}│")
-        print(f"  │  Email     : {self.user_email:<42}│")
-        print(f"  │  Session   : {self.session_id:<42}│")
-        storage = "Supabase" + ("  ✓ connected" if self._cloud.available else "  ✗ offline")
-        print(f"  │  Storage   : {storage:<42}│")
-        print(f"  │  Auto-save : every {AUTO_SAVE_SECS:.0f} seconds{' ' * 33}│")
-        print(f"  └{'─' * 56}┘")
+        # Minimal startup message
+        time.sleep(1)  # Stabilize process list
 
-        print("\n  Stabilizing (1 s)…", flush=True)
-        time.sleep(1)
-
-        self._baseline = frozenset(self._snapshot().keys())
+        # Initialize baseline with ONLY system processes we want to ignore
+        # Do NOT exclude user apps (VS Code, Chrome, etc.) that might be open
+        # This ensures VS Code/Chrome are tracked even if open before start()
+        self._baseline = frozenset(_IGNORE)  # Only system processes, not user apps
         self._running  = True
 
         self._thread = threading.Thread(
@@ -499,12 +812,7 @@ class AppMonitor:
         )
         self._thread.start()
 
-        print(
-            f"  ✅ Tracking started — "
-            f"{len(self._baseline)} pre-existing processes excluded.\n"
-            f"  Open any application and it will be detected instantly.\n",
-            flush=True,
-        )
+        log.info("Tracking started")
 
     def stop(self) -> None:
         """
@@ -518,7 +826,7 @@ class AppMonitor:
             return
 
         self._running = False
-        print("\n  Stopping tracker…", flush=True)
+        log.info("Stopping tracker")
 
         # Wait for the last poll to complete
         if self._thread and self._thread.is_alive():
@@ -530,7 +838,13 @@ class AppMonitor:
 
         # Final Supabase flush
         self._flush()
-        self._print_report()
+        
+        # Log error summary if any (removed non-essential console printing)
+        error_summary = self._error_tracker.get_summary()
+        if error_summary['total_errors'] > 0 or error_summary['supabase_failures'] > 0:
+            log.warning(f"Errors encountered - total: {error_summary['total_errors']}, supabase failures: {error_summary['supabase_failures']}")
+        
+        # Report printing suppressed - handled by timer_tracker SessionReport instead
         log.info("Stopped | session=%s", self.session_id)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -560,6 +874,8 @@ class AppMonitor:
         """
         Return a structured dict summarizing the completed session.
         Suitable for attaching to a TimerTracker or logging system.
+        
+        IMPORTANT: Must be called AFTER stop() to ensure all apps are finalized.
         """
         sessions = self._done
         if not sessions:
@@ -575,9 +891,12 @@ class AppMonitor:
 
         totals: Dict[str, float] = {}
         counts: Dict[str, int]   = {}
+        titles: Dict[str, str]   = {}
         for s in sessions:
             totals[s.app_name] = totals.get(s.app_name, 0.0) + s.duration_minutes
             counts[s.app_name] = counts.get(s.app_name, 0) + 1
+            if s.window_title and len(s.window_title) > len(titles.get(s.app_name, "")):
+                titles[s.app_name] = s.window_title
 
         total_min   = sum(totals.values())
         ranked_apps = sorted(totals.items(), key=lambda x: x[1], reverse=True)
@@ -590,7 +909,7 @@ class AppMonitor:
             "total_sessions":  len(sessions),
             "total_minutes":   round(total_min, 2),
             "top_apps": [
-                {"app": a, "minutes": round(m, 2), "sessions": counts[a]}
+                {"app": a, "minutes": round(m, 2), "sessions": counts[a], "title": titles.get(a, "")}
                 for a, m in ranked_apps[:10]
             ],
             "generated_at": datetime.now().isoformat(),
@@ -610,6 +929,35 @@ class AppMonitor:
         Provided for API compatibility.
         """
         return self.live_apps()
+    
+    # ✅ NEW: Error Tracking & Monitoring API
+    def get_error_summary(self) -> Dict:
+        """
+        Get comprehensive error tracking summary.
+        Returns:
+          - total_errors: Number of errors encountered
+          - failed_apps: Dict of apps that failed and error counts
+          - supabase_failures: Number of Supabase sync failures
+          - recent_errors: List of recent errors
+        """
+        return self._error_tracker.get_summary()
+    
+    def log_custom_error(self, app_name: str, message: str) -> None:
+        """Log custom error for monitoring"""
+        self._error_tracker.log_error('custom', app_name, message)
+    
+    def get_track_status(self) -> Dict:
+        """Get detailed tracking status including apps and errors"""
+        with self._lock:
+            return {
+                'running': self._running,
+                'active_apps': list(self._active.keys()),
+                'active_count': len(self._active),
+                'completed_count': len(self._done),
+                'error_summary': self.get_error_summary(),
+                'supabase_available': self._cloud.available,
+                'timestamp': datetime.now().isoformat()
+            }
 
     # ─────────────────────────────────────────────────────────────────────────
     #  POLLING THREAD
@@ -654,11 +1002,17 @@ class AppMonitor:
     def _snapshot(self) -> Dict[str, Dict]:
         """
         Return {normalized_process_name: {"pid": int, "window_title": str}}
-        for every user-visible process currently running.
+        for every USER-ACTIVE process currently running.
 
-        Per-PID window titles are resolved in a single EnumWindows call so
-        each process gets its own title — not the globally focused window.
-        Background OS processes in _IGNORE are excluded.
+        Intelligent filtering:
+          1. Exclude all processes in _IGNORE list (system services)
+          2. Include ONLY processes that have a visible window (foreground apps)
+          3. Include processes in _USER_APPS_WHITELIST even without window
+          4. Crucially: Keep whitelisted apps alive even if minimized (no window title)
+          5. Per-PID window titles resolved in single EnumWindows call
+
+        This ensures only meaningful user applications are tracked, including those
+        that are minimized or running in background but still in active use.
         """
         pid_map  = _pid_title_map()
         fallback = _linux_title() if _PLATFORM != "windows" else ""
@@ -668,14 +1022,45 @@ class AppMonitor:
             try:
                 raw  = (proc.info.get("name") or "").strip()
                 norm = raw.lower()
+                
+                # Skip if empty or in ignore list
                 if not norm or norm in _IGNORE:
                     continue
+                
+                # Get process details
+                pid = proc.info["pid"]
+                title = pid_map.get(pid, fallback)
+                
+                # FILTER 1: Only include if has a visible window (primary filter)
+                has_window = bool(title)  # Process has a visible window
+                
+                # FILTER 2: Or is in the whitelist (keeps apps alive even when minimized)
+                in_whitelist = norm in _USER_APPS_WHITELIST
+                
+                # FILTER 3: Or if already tracked (ensures continuous apps stay alive)
+                already_tracked = norm in self._active
+                
+                # Include only if: has window OR in whitelist OR already being tracked
+                # This ensures apps don't drop out if they get minimized, and they stay
+                # alive for the full session duration
+                if not (has_window or in_whitelist or already_tracked):
+                    continue
+                
+                # Skip duplicate entries (keep first, usually with best window title)
                 if norm not in apps:
-                    pid   = proc.info["pid"]
-                    title = pid_map.get(pid, fallback)
-                    apps[norm] = {"pid": pid, "window_title": title}
+                    # If we already have this app tracked, try to preserve its title
+                    # unless we found a better one
+                    existing_title = ""
+                    if norm in self._active:
+                        existing_title = self._active[norm].window_title or ""
+                    
+                    # Use new title if found, otherwise fall back to existing
+                    display_title = title if title else existing_title
+                    apps[norm] = {"pid": pid, "window_title": display_title}
+                    
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
+        
         return apps
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -685,40 +1070,40 @@ class AppMonitor:
     def _detect_new(self, current: Dict[str, Dict]) -> None:
         """
         Create an AppSession for every process that is new since the baseline.
-        Prints an instant console event for real-time feedback.
+        Tracks: VS Code, Chrome, Browsers, Paint, Photos, and all applications.
         """
         now = datetime.now()
+        
         for name, info in current.items():
             if name in self._active or name in self._baseline:
                 continue
-            title   = info.get("window_title", "")
-            session = AppSession(name, title, now)
-            self._active[name] = session
-            print(
-                f"  ➕  {now.strftime('%H:%M:%S')}  "
-                f"{name:<42}  \"{title or 'loading…'}\"",
-                flush=True,
-            )
+            
+            try:
+                title = info.get("window_title", "")
+                session = AppSession(name, title, now)
+                self._active[name] = session
+            except Exception as e:
+                self._error_tracker.log_error('app_detection', name, 
+                                             'Failed to create session', str(e))
+                log.error(f"Failed to detect app {name}: {e}")
 
     def _detect_closed(self, current: Dict[str, Dict]) -> None:
         """
         Finalize sessions for tracked processes that are no longer running.
-        Prints an instant console event for real-time feedback.
+        Prints an instant console event for real-time feedback with error tracking.
         """
         now    = datetime.now()
         closed = [n for n in self._active if n not in current]
 
         for name in closed:
-            sess = self._active.pop(name)
-            sess.finalize(now)
-            self._done.append(sess)
-            print(
-                f"  ➖  {now.strftime('%H:%M:%S')}  "
-                f"{name:<42}  "
-                f"{sess.duration_minutes:.2f} min  "
-                f"\"{sess.window_title or '—'}\"",
-                flush=True,
-            )
+            try:
+                sess = self._active.pop(name)
+                sess.finalize(now)
+                self._done.append(sess)
+            except Exception as e:
+                self._error_tracker.log_error('app_detection', name,
+                                             'Failed to finalize session', str(e))
+                log.error(f"Failed to finalize app {name}: {e}")
 
     def _refresh_titles(self, current: Dict[str, Dict]) -> None:
         """
@@ -734,29 +1119,27 @@ class AppMonitor:
             new_title = current.get(name, {}).get("window_title", "")
             if new_title:
                 sess.window_title = new_title
-                print(
-                    f"  🏷   {datetime.now().strftime('%H:%M:%S')}  "
-                    f"{name:<42}  → \"{new_title}\"",
-                    flush=True,
-                )
 
     def _finalize_all(self) -> None:
         """
         Finalize every still-open session when tracking stops.
         Must be called under self._lock AFTER the polling thread is joined.
+        
+        This is critical for capturing all applications that were continuously
+        open throughout the session (especially development tools and browsers).
         """
         now = datetime.now()
-        for sess in list(self._active.values()):
+        
+        # Finalize all active sessions with full duration
+        for app_name in list(self._active.keys()):
+            sess = self._active.pop(app_name)
             sess.finalize(now)
             self._done.append(sess)
-            print(
-                f"  ⏹   {now.strftime('%H:%M:%S')}  "
-                f"{sess.app_name:<42}  "
-                f"{sess.duration_minutes:.2f} min  "
-                f"\"{sess.window_title or '—'}\"",
-                flush=True,
-            )
-        self._active.clear()
+        
+        # Ensure _active is completely cleared
+        if self._active:
+            log.warning(f"Warning: {len(self._active)} apps still in _active after finalization")
+            self._active.clear()
 
     # ─────────────────────────────────────────────────────────────────────────
     #  STORAGE
@@ -766,9 +1149,11 @@ class AppMonitor:
         """
         Persist all unsaved completed sessions to Supabase.
         Called automatically every AUTO_SAVE_SECS and once more on stop().
+        Includes error tracking for failed syncs.
         """
         self._cloud.save(self._done, self.user_login,
-                         self.user_email, self.session_id)
+                         self.user_email, self.session_id,
+                         error_tracker=self._error_tracker)  # ✅ NEW: Pass error tracker
 
     # ─────────────────────────────────────────────────────────────────────────
     #  CONSOLE REPORT
@@ -915,31 +1300,8 @@ if __name__ == "__main__":
     monitor = AppMonitor()
     monitor.start()
 
-    # Live status ticker — prints every 10 seconds
+    # Keep timing loop running silently — tracking continues in background
     for elapsed in range(duration):
         time.sleep(1)
-        remaining = duration - elapsed - 1
-        if elapsed % 10 == 9:
-            apps = monitor.live_apps()
-            ts   = datetime.now().strftime("%H:%M:%S")
-            if apps:
-                print(
-                    f"\n  [{ts}]  {remaining}s left  |  "
-                    f"tracking {len(apps)} app(s):",
-                    flush=True,
-                )
-                for a in apps[:5]:
-                    title = a["window_title"][:34]
-                    print(
-                        f"    • {a['app_name']:<40} "
-                        f"{a['duration_min']:>5.1f} min  \"{title}\"",
-                        flush=True,
-                    )
-            else:
-                print(
-                    f"  [{ts}]  {remaining}s left  |  "
-                    "No new apps yet — open something.",
-                    flush=True,
-                )
 
     monitor.stop()
