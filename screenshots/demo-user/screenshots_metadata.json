@@ -1,0 +1,19 @@
+{
+  "capture_settings": {
+    "output_dir": "screenshots/demo-user",
+    "compress": true,
+    "quality": 85,
+    "max_screenshots": 100,
+    "interval_mode": "random_1_60_seconds"
+  },
+  "statistics": {
+    "total_captured": 0,
+    "in_memory": 0,
+    "total_size_kb": 0,
+    "last_capture": null,
+    "output_directory": "screenshots/demo-user",
+    "current_delay": null,
+    "capture_active": false
+  },
+  "screenshots": []
+}

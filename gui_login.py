@@ -1,541 +1,1012 @@
-# gui_login.py - COMPLETE FIXED VERSION
-import tkinter as tk
-from tkinter import ttk, messagebox
-import customtkinter as ctk
-from auth_manager import AuthManager, User
-from timer_tracker import TimerTracker
-import threading
-import time
-from datetime import datetime
-import sys
-import ast
+"""
+Modern Tkinter GUI for Developer Productivity Tracker
+Features: Multi-panel layout, professional styling, real-time updates
+"""
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
+import sys
+import customtkinter as ctk
+from tkinter import messagebox
+import ast
+import threading
+from timer_tracker import TimerTracker
+from auth_manager import AuthManager
 
 class LoginWindow:
     def __init__(self):
-        self.auth = AuthManager()
         self.app = ctk.CTk()
-        self.app.title("Developer Activity Tracker - Login")
-        self.app.geometry("400x500")
+        self.app.title("Developer Tracker - Login")
+        self.app.geometry("500x600")
+        self.app.resizable(False, False)
         
-        # Handle window close
-        self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
+        # Configure appearance (modern CustomTkinter 3.0+ API)
+        ctk.set_appearance_mode("dark")
         
-        self.setup_ui()
+        self.auth = AuthManager()
+        self.dashboard = None
         
-    def open_web_registration(self):
-        """Open web registration page in default browser"""
-        web_url = "https://developer-activity-and-productivity.vercel.app/admin/registration"
-        import webbrowser
-        webbrowser.open(web_url)
-        self.status_label.configure(
-            text="Redirected to admin registration page", 
-            text_color="blue"
-        )
-    
-    def setup_ui(self):
+        # Setup login UI
+        self.setup_login_ui()
+        
+    def setup_login_ui(self):
+        """Setup login interface"""
+        # Main Frame
+        main_frame = ctk.CTkFrame(self.app)
+        main_frame.pack(pady=50, padx=40, fill="both", expand=True)
+        
         # Title
-        title = ctk.CTkLabel(self.app, text="🔐 Login", 
-                           font=ctk.CTkFont(size=24, weight="bold"))
-        title.pack(pady=30)
+        title = ctk.CTkLabel(
+            main_frame,
+            text="🚀 Developer Tracker",
+            font=ctk.CTkFont(size=32, weight="bold")
+        )
+        title.pack(pady=20)
         
-        # Email
-        ctk.CTkLabel(self.app, text="Email:").pack(pady=(10, 0))
-        self.email_entry = ctk.CTkEntry(self.app, width=250)
-        self.email_entry.pack(pady=5)
+        subtitle = ctk.CTkLabel(
+            main_frame,
+            text="Track your productivity in real-time",
+            font=ctk.CTkFont(size=14),
+            text_color="gray"
+        )
+        subtitle.pack(pady=(0, 40))
         
-        # Password
-        ctk.CTkLabel(self.app, text="Password:").pack(pady=(10, 0))
-        self.password_entry = ctk.CTkEntry(self.app, width=250, show="*")
-        self.password_entry.pack(pady=5)
+        # Email input
+        ctk.CTkLabel(main_frame, text="Email", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w")
+        self.email_input = ctk.CTkEntry(main_frame, placeholder_text="Enter your email", height=40)
+        self.email_input.pack(fill="x", pady=(5, 15))
         
-        # Login Button
-        login_btn = ctk.CTkButton(self.app, text="Login", 
-                                command=self.login, width=150)
-        login_btn.pack(pady=20)
+        # Password input
+        ctk.CTkLabel(main_frame, text="Password", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w")
+        self.pass_input = ctk.CTkEntry(main_frame, placeholder_text="Enter your password", show="•", height=40)
+        self.pass_input.pack(fill="x", pady=(5, 30))
         
-        # Register Button
-        register_btn = ctk.CTkButton(self.app, text="Register (Admin Only)", 
-                           command=self.open_web_registration, width=150)
-        register_btn.pack(pady=5)
+        # Login button
+        login_btn = ctk.CTkButton(
+            main_frame,
+            text="🔓 Login",
+            command=self.login,
+            height=45,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            corner_radius=10
+        )
+        login_btn.pack(fill="x")
         
-        # Status label
-        self.status_label = ctk.CTkLabel(self.app, text="", 
-                                       text_color="gray")
-        self.status_label.pack(pady=10)
+        # Register link
+        register_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        register_frame.pack(pady=20)
+        
+        ctk.CTkLabel(register_frame, text="No account? ", text_color="gray").pack(side="left")
+        register_btn = ctk.CTkButton(
+            register_frame,
+            text="Sign up",
+            command=self.show_register,
+            width=100,
+            height=30,
+            fg_color="transparent",
+            text_color="#54A0FF"
+        )
+        register_btn.pack(side="left")
     
     def login(self):
-        email = self.email_entry.get().strip()
-        password = self.password_entry.get()
+        """Handle login"""
+        email = self.email_input.get()
+        password = self.pass_input.get()
         
         if not email or not password:
-            messagebox.showerror("Error", "Please enter email and password")
+            messagebox.showerror("Error", "Please fill in all fields")
             return
         
-        self.status_label.configure(text="Logging in...", text_color="yellow")
-        self.app.update()
-        
-        success, message, user = self.auth.login(email, password)
-        
-        if success and user:
-            self.status_label.configure(text="Login successful!", text_color="green")
-            self.app.after(1000, lambda: self.open_dashboard(user))
-        else:
-            self.status_label.configure(text=message, text_color="red")
+        try:
+            success, message, user = self.auth.login(email, password)
+            if success and user:
+                # Switch to dashboard
+                self.app.withdraw()
+                self.dashboard = DashboardWindow(user, self.auth, self)
+                self.dashboard.run()
+            else:
+                messagebox.showerror("Login Failed", message)
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
     
-    def open_dashboard(self, user: User):
-        self.app.withdraw()
-        dashboard = DashboardWindow(user, self.auth, self)
-        dashboard.app.mainloop()
-    
-    def on_closing(self):
-        """Handle window close event"""
-        self.app.quit()
-        sys.exit(0)
+    def show_register(self):
+        """Show registration dialog"""
+        messagebox.showinfo("Registration", "Registration coming soon!")
     
     def show(self):
-        """Show the login window"""
+        """Show login window"""
         self.app.deiconify()
     
     def run(self):
         self.app.mainloop()
 
-
 class DashboardWindow:
-    def __init__(self, user: User, auth: AuthManager, login_window):
+    def __init__(self, user, auth, login_window):
         self.user = user
         self.auth = auth
         self.login_window = login_window
         
-        # Instant-response timer
-        self.timer = TimerTracker(
-            user_id=user.id, 
-            user_email=user.email
-        )
-        
-        self.app = ctk.CTk()
-        self.app.title(f"Dashboard - {user.name}")
-        self.app.geometry("800x600")
-        
-        self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
+        # State
         self.timer_running = False
         self.timer_paused = False
         self.stop_update_thread = False
         self.update_counter = 0
+        self.screenshot_images = {}
+        self.screenshot_labels = {}
+        
+        # Thread safety lock for UI updates
+        self.ui_lock = threading.Lock()
+        
+        # Initialize timer tracker
+        self.timer = TimerTracker(
+            user_id=user.id,
+            user_email=user.email
+        )
+        
+        # Create main window
+        self.app = ctk.CTk()
+        self.app.title("Developer Productivity Tracker")
+        self.app.geometry("1400x900")
+        self.app.minsize(1000, 700)
+        self.app.resizable(True, True)
+        self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Configure appearance
+        ctk.set_appearance_mode("dark")
+        
+        # Professional Color Palette
+        self.colors = {
+            "bg_primary": "#0A0E27",
+            "bg_secondary": "#1A1F3A",
+            "bg_tertiary": "#252B48",
+            "card_bg": "#2A2F4F",
+            "accent_blue": "#00D4FF",
+            "accent_green": "#00E699",
+            "accent_purple": "#BD5FFF",
+            "accent_orange": "#FF9F1C",
+            "accent_red": "#FF6B6B",
+            "text_primary": "#E8E8FF",
+            "text_secondary": "#A8A8D8",
+            "text_muted": "#7A7AB0"
+        }
+        
+        # Configure window background
+        self.app.configure(fg_color=self.colors["bg_primary"])
         
         self.setup_ui()
         self.start_timer_update()
-        print(f"⚡ Dashboard ready for {user.name}")
     
     def setup_ui(self):
-        """Complete UI Setup"""
-        # Header Frame
-        header_frame = ctk.CTkFrame(self.app)
-        header_frame.pack(fill="x", padx=20, pady=20)
-        
-        # User Info
-        user_label = ctk.CTkLabel(
-            header_frame, 
-            text=f"👤 {self.user.name}",
-            font=ctk.CTkFont(size=18, weight="bold")
+        """Setup all UI components with modern multi-panel layout"""
+        self._setup_header()
+        self._setup_timer_section()
+        self._setup_content_panels()
+    
+    def _setup_header(self):
+        """Header with user info and logout button"""
+        header = ctk.CTkFrame(
+            self.app,
+            fg_color=self.colors["bg_secondary"],
+            height=70,
+            corner_radius=12
         )
-        user_label.pack(side="left", padx=10)
+        header.pack(pady=15, padx=15, fill="x")
+        header.pack_propagate(False)
         
-        # Email display
-        email_label = ctk.CTkLabel(
-            header_frame,
-            text=f"📧 {self.user.email}",
-            font=ctk.CTkFont(size=14)
+        # User info container
+        user_container = ctk.CTkFrame(header, fg_color="transparent")
+        user_container.pack(side="left", padx=20, anchor="center")
+        
+        user_email = ctk.CTkLabel(
+            user_container,
+            text=f"👤 {self.user.email}",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text_primary"]
         )
-        email_label.pack(side="left", padx=10)
+        user_email.pack(anchor="w")
         
-        # Logout Button
+        session_info = ctk.CTkLabel(
+            user_container,
+            text="Session active • Focus mode enabled",
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text_secondary"]
+        )
+        session_info.pack(anchor="w", pady=(5, 0))
+        
+        # Logout button on right
         logout_btn = ctk.CTkButton(
-            header_frame, 
-            text="Logout", 
-            command=self.logout, 
-            width=100,
-            fg_color="#FF6B6B",
-            hover_color="#FF5252"
-        )
-        logout_btn.pack(side="right", padx=10)
-        
-        # Timer Section
-        timer_frame = ctk.CTkFrame(self.app)
-        timer_frame.pack(pady=30, padx=50, fill="x")
-        
-        # Timer Title
-        timer_title = ctk.CTkLabel(
-            timer_frame, 
-            text="⏱️ Productivity Timer",
-            font=ctk.CTkFont(size=20, weight="bold")
-        )
-        timer_title.pack(pady=10)
-        
-        # Timer Display (Large)
-        self.timer_label = ctk.CTkLabel(
-            timer_frame, 
-            text="00:00:00",
-            font=ctk.CTkFont(size=48, weight="bold"),
-            text_color="#4ECDC4"
-        )
-        self.timer_label.pack(pady=20)
-        
-        # Timer Buttons Frame
-        btn_frame = ctk.CTkFrame(timer_frame)
-        btn_frame.pack(pady=20)
-        
-        # Start Button
-        self.start_btn = ctk.CTkButton(
-            btn_frame, 
-            text="▶ Start", 
-            command=self.start_timer, 
-            width=120,
+            header,
+            text="🚪 Logout",
+            command=self.logout,
+            width=130,
             height=40,
-            fg_color="#1DD1A1",
-            hover_color="#10AC84",
-            font=ctk.CTkFont(size=16, weight="bold")
+            corner_radius=8,
+            fg_color=self.colors["accent_red"],
+            hover_color="#E53935",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#FFFFFF"
+        )
+        logout_btn.pack(side="right", padx=20, anchor="center")
+    
+    def _setup_timer_section(self):
+        """Large, prominent timer display section"""
+        timer_frame = ctk.CTkFrame(
+            self.app,
+            fg_color=self.colors["bg_secondary"],
+            corner_radius=15
+        )
+        timer_frame.pack(pady=10, padx=15, fill="x")
+        
+        # Timer title
+        title_frame = ctk.CTkFrame(timer_frame, fg_color="transparent")
+        title_frame.pack(pady=(15, 5), padx=20)
+        
+        ctk.CTkLabel(
+            title_frame,
+            text="⏱️ Session Timer",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=self.colors["text_secondary"]
+        ).pack()
+        
+        # Large timer display
+        self.timer_label = ctk.CTkLabel(
+            timer_frame,
+            text="00:00:00",
+            text_color=self.colors["accent_blue"],
+            font=ctk.CTkFont(size=72, weight="bold")
+        )
+        self.timer_label.pack(pady=10)
+        
+        # Control buttons
+        button_frame = ctk.CTkFrame(timer_frame, fg_color="transparent")
+        button_frame.pack(pady=(10, 20))
+        
+        self.start_btn = ctk.CTkButton(
+            button_frame,
+            text="▶ START",
+            command=self.start_timer,
+            width=140,
+            height=45,
+            corner_radius=10,
+            fg_color=self.colors["accent_green"],
+            hover_color="#00CC77",
+            text_color="#000000",
+            font=ctk.CTkFont(size=13, weight="bold")
         )
         self.start_btn.pack(side="left", padx=10)
         
-        # Pause Button
         self.pause_btn = ctk.CTkButton(
-            btn_frame, 
-            text="⏸ Pause", 
-            command=self.pause_timer, 
-            width=120,
-            height=40,
-            fg_color="#FF9F43",
-            hover_color="#F39C12",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            button_frame,
+            text="⏸ PAUSE",
+            command=self.pause_timer,
+            width=140,
+            height=45,
+            corner_radius=10,
+            fg_color=self.colors["accent_orange"],
+            hover_color="#E68900",
+            text_color="#000000",
+            font=ctk.CTkFont(size=13, weight="bold"),
             state="disabled"
         )
         self.pause_btn.pack(side="left", padx=10)
         
-        # Stop Button
         self.stop_btn = ctk.CTkButton(
-            btn_frame, 
-            text="⏹ Stop", 
-            command=self.stop_timer, 
-            width=120,
-            height=40,
-            fg_color="#FF6B6B",
-            hover_color="#EE5A52",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            button_frame,
+            text="⏹ STOP",
+            command=self.stop_timer,
+            width=140,
+            height=45,
+            corner_radius=10,
+            fg_color=self.colors["accent_red"],
+            hover_color="#E53935",
+            text_color="#FFFFFF",
+            font=ctk.CTkFont(size=13, weight="bold"),
             state="disabled"
         )
         self.stop_btn.pack(side="left", padx=10)
         
-        # Status Label
+        # Status label
         self.status_label = ctk.CTkLabel(
-            timer_frame, 
+            timer_frame,
             text="Ready to start tracking",
-            text_color="gray",
-            font=ctk.CTkFont(size=14)
+            text_color=self.colors["text_secondary"],
+            font=ctk.CTkFont(size=12)
         )
-        self.status_label.pack(pady=10)
+        self.status_label.pack(pady=(0, 15))
+    
+    def _setup_content_panels(self):
+        """Multi-panel layout: Left (apps), Center (stats), Right (screenshots)"""
+        # Main container
+        content_frame = ctk.CTkFrame(self.app, fg_color="transparent")
+        content_frame.pack(pady=10, padx=15, fill="both", expand=True)
         
-        # Stats Section
-        stats_frame = ctk.CTkFrame(self.app)
-        stats_frame.pack(pady=20, padx=50, fill="x")
+        # LEFT PANEL: Tracked Apps
+        left_panel = self._create_panel(content_frame, "📱 Live Apps")
+        left_panel.grid(row=0, column=0, padx=(0, 7), sticky="nsew", rowspan=2)
+        self._setup_apps_panel(left_panel)
         
-        stats_title = ctk.CTkLabel(
-            stats_frame, 
-            text="📊 Session Statistics",
-            font=ctk.CTkFont(size=16, weight="bold")
+        # CENTER TOP: Statistics
+        center_panel = self._create_panel(content_frame, "📊 Statistics")
+        center_panel.grid(row=0, column=1, padx=7, sticky="nsew")
+        self._setup_stats_panel(center_panel)
+        
+        # RIGHT PANEL: Screenshots
+        right_panel = self._create_panel(content_frame, "📸 Screenshots")
+        right_panel.grid(row=0, column=2, padx=(7, 0), sticky="nsew", rowspan=2)
+        self._setup_screenshots_panel(right_panel)
+        
+        # CENTER BOTTOM: Productivity
+        prod_panel = self._create_panel(content_frame, "🎯 Session Progress")
+        prod_panel.grid(row=1, column=1, padx=7, pady=(7, 0), sticky="nsew")
+        self._setup_productivity_panel(prod_panel)
+        
+        # Configure grid
+        content_frame.columnconfigure(0, weight=1)
+        content_frame.columnconfigure(1, weight=1)
+        content_frame.columnconfigure(2, weight=1)
+        content_frame.rowconfigure(0, weight=2)
+        content_frame.rowconfigure(1, weight=1)
+    
+    def _create_panel(self, parent, title):
+        """Create a styled panel with rounded corners and title"""
+        panel = ctk.CTkFrame(
+            parent,
+            fg_color=self.colors["bg_secondary"],
+            corner_radius=12
         )
-        stats_title.pack(pady=10)
         
-        # Stats Grid
-        stats_grid = ctk.CTkFrame(stats_frame)
-        stats_grid.pack(pady=10)
+        # Title bar
+        title_bar = ctk.CTkFrame(
+            panel,
+            fg_color=self.colors["bg_tertiary"],
+            corner_radius=10
+        )
+        title_bar.pack(pady=10, padx=10, fill="x")
         
-        # Create stat labels
+        ctk.CTkLabel(
+            title_bar,
+            text=title,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=self.colors["text_primary"]
+        ).pack(pady=10, padx=10)
+        
+        # Content frame
+        content = ctk.CTkFrame(panel, fg_color="transparent")
+        content.pack(pady=10, padx=10, fill="both", expand=True)
+        
+        panel._content_frame = content
+        return panel
+    
+    def _setup_apps_panel(self, panel):
+        """Left panel: Currently tracked apps with live duration"""
+        content = panel._content_frame
+        
+        # Scrollable frame for apps
+        self.apps_scrollable = ctk.CTkScrollableFrame(
+            content,
+            fg_color="transparent",
+            corner_radius=8
+        )
+        self.apps_scrollable.pack(fill="both", expand=True)
+        
+        self.apps_display_labels = []
+        self.apps_label = ctk.CTkLabel(
+            self.apps_scrollable,
+            text="Waiting for apps...",
+            text_color=self.colors["text_muted"],
+            font=ctk.CTkFont(size=12)
+        )
+        self.apps_label.pack(pady=20)
+    
+    def _setup_stats_panel(self, panel):
+        """Center top panel: Key statistics"""
+        content = panel._content_frame
+        
         self.stat_labels = {}
         stats = [
-            ("Mouse Events", "0", "#54A0FF"),
-            ("Keyboard Events", "0", "#5F27CD"),
-            ("Apps Tracked", "0", "#00D2D3"),
-            ("Screenshots", "0", "#FF9FF3"),
-            ("Productivity", "0%", "#1DD1A1")
+            ("Mouse Events", "0", self.colors["accent_blue"]),
+            ("Keyboard Events", "0", self.colors["accent_purple"]),
+            ("Apps Traced", "0", self.colors["accent_green"])
         ]
         
-        for i, (label, value, color) in enumerate(stats):
-            frame = ctk.CTkFrame(stats_grid, width=150, height=80)
-            frame.grid(row=i//3, column=i%3, padx=10, pady=5, sticky="nsew")
-            
-            # Label
-            ctk.CTkLabel(
-                frame, 
-                text=label, 
-                text_color="gray",
-                font=ctk.CTkFont(size=12)
-            ).pack(pady=(10, 0))
-            
-            # Value
-            self.stat_labels[label] = ctk.CTkLabel(
-                frame, 
-                text=value,
-                text_color=color,
-                font=ctk.CTkFont(size=18, weight="bold")
+        for label_text, value, color in stats:
+            stat_card = ctk.CTkFrame(
+                content,
+                fg_color=self.colors["bg_tertiary"],
+                corner_radius=8
             )
-            self.stat_labels[label].pack(pady=5)
+            stat_card.pack(fill="x", pady=8)
+            
+            ctk.CTkLabel(
+                stat_card,
+                text=label_text,
+                font=ctk.CTkFont(size=11),
+                text_color=self.colors["text_secondary"]
+            ).pack(anchor="w", padx=12, pady=(8, 2))
+            
+            self.stat_labels[label_text] = ctk.CTkLabel(
+                stat_card,
+                text=value,
+                font=ctk.CTkFont(size=24, weight="bold"),
+                text_color=color
+            )
+            self.stat_labels[label_text].pack(anchor="w", padx=12, pady=(2, 8))
+    
+    def _setup_screenshots_panel(self, panel):
+        """Right panel: Screenshot thumbnails grid"""
+        content = panel._content_frame
         
-        # Current Apps Display
-        apps_frame = ctk.CTkFrame(self.app)
-        apps_frame.pack(pady=20, padx=50, fill="x")
-        
-        apps_title = ctk.CTkLabel(
-            apps_frame, 
-            text="📱 Currently Tracked Apps",
-            font=ctk.CTkFont(size=16, weight="bold")
+        # Scrollable frame for screenshots
+        self.screenshots_scrollable = ctk.CTkScrollableFrame(
+            content,
+            fg_color="transparent",
+            corner_radius=8
         )
-        apps_title.pack(pady=10)
+        self.screenshots_scrollable.pack(fill="both", expand=True)
         
-        self.apps_label = ctk.CTkLabel(
-            apps_frame, 
-            text="No apps being tracked yet",
-            text_color="gray",
-            font=ctk.CTkFont(size=14)
+        # Grid for thumbnails
+        self.screenshots_grid = ctk.CTkFrame(self.screenshots_scrollable, fg_color="transparent")
+        self.screenshots_grid.pack(fill="both", expand=True)
+        
+        # Placeholder
+        placeholder = ctk.CTkLabel(
+            self.screenshots_grid,
+            text="📸 Screenshots\nwill appear here",
+            text_color=self.colors["text_muted"],
+            font=ctk.CTkFont(size=12),
+            justify="center"
         )
-        self.apps_label.pack(pady=5)
+        placeholder.pack(pady=40, expand=True)
+    
+    def _setup_productivity_panel(self, panel):
+        """Bottom center panel: Productivity score and stats"""
+        content = panel._content_frame
+        
+        # Productivity Score
+        prod_card = ctk.CTkFrame(
+            content,
+            fg_color=self.colors["bg_tertiary"],
+            corner_radius=8
+        )
+        prod_card.pack(fill="x", pady=8)
+        
+        ctk.CTkLabel(
+            prod_card,
+            text="Productivity Score",
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text_secondary"]
+        ).pack(anchor="w", padx=12, pady=(8, 2))
+        
+        self.stat_labels["Productivity"] = ctk.CTkLabel(
+            prod_card,
+            text="0%",
+            font=ctk.CTkFont(size=28, weight="bold"),
+            text_color=self.colors["accent_green"]
+        )
+        self.stat_labels["Productivity"].pack(anchor="w", padx=12, pady=(2, 8))
+        
+        # Screenshots count
+        ss_card = ctk.CTkFrame(
+            content,
+            fg_color=self.colors["bg_tertiary"],
+            corner_radius=8
+        )
+        ss_card.pack(fill="x", pady=8)
+        
+        ctk.CTkLabel(
+            ss_card,
+            text="Screenshots Captured",
+            font=ctk.CTkFont(size=11),
+            text_color=self.colors["text_secondary"]
+        ).pack(anchor="w", padx=12, pady=(8, 2))
+        
+        self.stat_labels["Screenshots"] = ctk.CTkLabel(
+            ss_card,
+            text="0",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=self.colors["accent_orange"]
+        )
+        self.stat_labels["Screenshots"].pack(anchor="w", padx=12, pady=(2, 8))
     
     def start_timer(self):
-        """Start timer with INSTANT UI feedback"""
+        """Start timer with INSTANT UI feedback - Non-blocking"""
         try:
-            print("🟢 START clicked")
-            
-            # INSTANT UI UPDATE: Update buttons BEFORE starting timer
+            # INSTANT UI UPDATE - happens immediately
             self.start_btn.configure(state="disabled")
             self.pause_btn.configure(state="normal")
             self.stop_btn.configure(state="normal")
-            self.status_label.configure(text="Starting...", text_color="yellow")
+            self.status_label.configure(text="Starting...", text_color=self.colors["accent_orange"])
             self.app.update_idletasks()
             
-            # Start timer
-            if self.timer.start():
-                self.timer_running = True
-                self.timer_paused = False
-                self.status_label.configure(text="Tracking ACTIVE", text_color="green")
-                
-                # Immediate timer display
-                status = self.timer.get_current_time()
-                self.timer_label.configure(text=status["formatted_time"])
-                
-                print(f"✅ Timer started: {status['formatted_time']}")
-                return True
-            else:
-                # Rollback on failure
-                self.start_btn.configure(state="normal")
-                self.status_label.configure(text="Start failed", text_color="red")
-                return False
-                
+            # Start timer in background thread to prevent blocking
+            def start_background():
+                try:
+                    if self.timer.start():
+                        self.timer_running = True
+                        self.timer_paused = False
+                        
+                        # Schedule UI update on main thread - separate functions
+                        def update_ui_after_start():
+                            try:
+                                if not self.app.winfo_exists():
+                                    return
+                                with self.ui_lock:
+                                    # Keep START button showing "START" but disabled during active tracking
+                                    self.start_btn.configure(
+                                        text="▶ START",
+                                        state="disabled"
+                                    )
+                                    # ENABLE PAUSE BUTTON so user can pause
+                                    self.pause_btn.configure(state="normal")
+                                    self.status_label.configure(
+                                        text="Tracking ACTIVE", 
+                                        text_color=self.colors["accent_green"]
+                                    )
+                            except Exception as e:
+                                print(f"Update UI error: {e}")
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, update_ui_after_start)
+                        
+                        status = self.timer.get_current_time()
+                        if self.app.winfo_exists():
+                            self.app.after(100, lambda: self.timer_label.configure(
+                                text=status["formatted_time"]
+                            ))
+                    else:
+                        def update_ui_start_failed():
+                            try:
+                                if not self.app.winfo_exists():
+                                    return
+                                with self.ui_lock:
+                                    self.start_btn.configure(state="normal")
+                                    self.pause_btn.configure(state="disabled")
+                                    self.status_label.configure(
+                                        text="Start failed", 
+                                        text_color=self.colors["accent_red"]
+                                    )
+                            except Exception as e:
+                                print(f"Update UI error: {e}")
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, update_ui_start_failed)
+                except Exception as e:
+                    print(f"Start background error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    def update_ui_start_error():
+                        try:
+                            if not self.app.winfo_exists():
+                                return
+                            with self.ui_lock:
+                                self.start_btn.configure(state="normal")
+                                self.pause_btn.configure(state="disabled")
+                                self.status_label.configure(
+                                    text="Start error", 
+                                    text_color=self.colors["accent_red"]
+                                )
+                        except Exception as e:
+                            print(f"Update UI error: {e}")
+                    
+                    if self.app.winfo_exists():
+                        self.app.after(0, update_ui_start_error)
+            
+            threading.Thread(target=start_background, daemon=True).start()
+            
         except Exception as e:
-            print(f"❌ Start error: {e}")
+            print(f"Start error: {e}")
             self.start_btn.configure(state="normal")
-            return False
     
     def pause_timer(self):
-        """Pause timer with INSTANT UI feedback"""
+        """Pause timer with INSTANT UI feedback - Non-blocking and thread-safe"""
         try:
-            print("⏸️ PAUSE clicked")
-            
-            # INSTANT UI UPDATE: Update buttons BEFORE pausing timer
+            # INSTANT UI UPDATE - happens immediately
             self.pause_btn.configure(state="disabled")
-            self.start_btn.configure(text="▶ Resume", state="normal")
-            self.status_label.configure(text="Pausing...", text_color="yellow")
+            # IMPORTANT: Change both text AND command for the button
+            self.start_btn.configure(
+                text="▶ RESUME", 
+                state="normal",
+                command=self.resume_timer  # Change command to resume
+            )
+            self.status_label.configure(text="Pausing...", text_color=self.colors["accent_orange"])
             self.app.update_idletasks()
             
-            # Pause timer
-            if self.timer.pause():
-                self.timer_paused = True
-                self.status_label.configure(text="PAUSED", text_color="yellow")
-                
-                # Capture and display paused time
-                status = self.timer.get_current_time()
-                self.timer_label.configure(text=status["formatted_time"])
-                
-                print(f"✅ Timer paused: {status['formatted_time']}")
-                return True
-            else:
-                # Rollback on failure
-                self.pause_btn.configure(state="normal")
-                self.status_label.configure(text="Pause failed", text_color="red")
-                return False
-                
+            # Pause timer in background thread
+            def pause_background():
+                try:
+                    if self.timer.pause():
+                        self.timer_paused = True
+                        
+                        # Schedule UI update on main thread - separate calls
+                        def update_ui_after_pause():
+                            try:
+                                if not self.app.winfo_exists():
+                                    return
+                                with self.ui_lock:
+                                    self.status_label.configure(
+                                        text="PAUSED", 
+                                        text_color=self.colors["accent_orange"]
+                                    )
+                                    status = self.timer.get_current_time()
+                                    self.timer_label.configure(
+                                        text=status["formatted_time"]
+                                    )
+                            except Exception as e:
+                                print(f"Update UI error: {e}")
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, update_ui_after_pause)
+                    else:
+                        def update_ui_pause_failed():
+                            try:
+                                if not self.app.winfo_exists():
+                                    return
+                                with self.ui_lock:
+                                    self.pause_btn.configure(state="normal")
+                                    self.status_label.configure(
+                                        text="Pause failed", 
+                                        text_color=self.colors["accent_red"]
+                                    )
+                            except Exception as e:
+                                print(f"Update UI error: {e}")
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, update_ui_pause_failed)
+                except Exception as e:
+                    print(f"Pause background error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    def update_ui_pause_error():
+                        try:
+                            if not self.app.winfo_exists():
+                                return
+                            with self.ui_lock:
+                                self.pause_btn.configure(state="normal")
+                                self.status_label.configure(
+                                    text="Pause error", 
+                                    text_color=self.colors["accent_red"]
+                                )
+                        except Exception as e:
+                            print(f"Update UI error: {e}")
+                    
+                    if self.app.winfo_exists():
+                        self.app.after(0, update_ui_pause_error)
+            
+            threading.Thread(target=pause_background, daemon=True).start()
+            
         except Exception as e:
-            print(f"❌ Pause error: {e}")
+            print(f"Pause error: {e}")
+            import traceback
+            traceback.print_exc()
             self.pause_btn.configure(state="normal")
-            return False
     
     def resume_timer(self):
-        """Resume timer with INSTANT UI feedback"""
+        """Resume timer with INSTANT UI feedback - Non-blocking and thread-safe"""
         try:
-            print("▶ RESUME clicked")
-            
-            # INSTANT UI UPDATE: Update buttons BEFORE resuming timer
-            self.start_btn.configure(state="disabled")
-            self.pause_btn.configure(state="normal")
-            self.status_label.configure(text="Resuming...", text_color="yellow")
+            # INSTANT UI UPDATE - happens immediately
+            self.pause_btn.configure(state="disabled")
+            self.status_label.configure(text="Resuming...", text_color=self.colors["accent_blue"])
             self.app.update_idletasks()
             
-            # Resume timer
-            if self.timer.resume():
-                self.timer_paused = False
-                self.status_label.configure(text="Tracking ACTIVE", text_color="green")
-                
-                print(f"✅ Timer resumed from paused state")
-                return True
-            else:
-                # Rollback on failure
-                self.start_btn.configure(state="normal", text="▶ Resume")
-                self.status_label.configure(text="Resume failed", text_color="red")
-                return False
-                
+            # Resume timer in background thread
+            def resume_background():
+                try:
+                    if self.timer.resume():
+                        self.timer_paused = False
+                        
+                        # Schedule UI updates on main thread - separate function calls
+                        def update_ui_after_resume():
+                            try:
+                                if not self.app.winfo_exists():
+                                    return
+                                with self.ui_lock:
+                                    # Reset START button back to "START" but keep it disabled during tracking
+                                    self.start_btn.configure(
+                                        text="▶ START",
+                                        state="disabled"
+                                    )
+                                    # RE-ENABLE PAUSE BUTTON so user can pause again
+                                    self.pause_btn.configure(state="normal")
+                                    self.status_label.configure(
+                                        text="Tracking ACTIVE", 
+                                        text_color=self.colors["accent_green"]
+                                    )
+                            except Exception as e:
+                                print(f"Update UI error: {e}")
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, update_ui_after_resume)
+                    else:
+                        def update_ui_resume_failed():
+                            try:
+                                if not self.app.winfo_exists():
+                                    return
+                                with self.ui_lock:
+                                    self.pause_btn.configure(state="normal")
+                                    self.status_label.configure(
+                                        text="Resume failed", 
+                                        text_color=self.colors["accent_red"]
+                                    )
+                            except Exception as e:
+                                print(f"Update UI error: {e}")
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, update_ui_resume_failed)
+                except Exception as e:
+                    print(f"Resume background error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    def update_ui_resume_error():
+                        try:
+                            if not self.app.winfo_exists():
+                                return
+                            with self.ui_lock:
+                                self.pause_btn.configure(state="normal")
+                                self.status_label.configure(
+                                    text="Resume error", 
+                                    text_color=self.colors["accent_red"]
+                                )
+                        except Exception as e:
+                            print(f"Update UI error: {e}")
+                    
+                    if self.app.winfo_exists():
+                        self.app.after(0, update_ui_resume_error)
+            
+            threading.Thread(target=resume_background, daemon=True).start()
+            
         except Exception as e:
-            print(f"❌ Resume error: {e}")
-            self.start_btn.configure(state="normal", text="▶ Resume")
-            return False
+            print(f"Resume error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.pause_btn.configure(state="normal")
     
     def stop_timer(self):
-        """Stop timer with INSTANT UI feedback"""
+        """Stop timer with INSTANT UI feedback - Non-blocking and thread-safe"""
         try:
-            print("⏹️ STOP clicked")
-            
-            # INSTANT UI UPDATE: Update buttons BEFORE stopping timer
-            self.status_label.configure(text="Stopping...", text_color="yellow")
+            # INSTANT UI UPDATE - happens immediately
+            self.status_label.configure(text="Stopping...", text_color=self.colors["accent_orange"])
             self.app.update_idletasks()
             
-            session = self.timer.stop()
-            if session:
-                self.timer_running = False
-                self.timer_paused = False
-                
-                # Reset UI to initial state
-                self.start_btn.configure(text="▶ Start", state="normal")
-                self.pause_btn.configure(state="disabled")
-                self.stop_btn.configure(state="disabled")
-                self.timer_label.configure(text="00:00:00")
-                
-                # UPDATE ALL STATS - INCLUDING APPS
-                self.stat_labels["Mouse Events"].configure(text=str(session.mouse_events))
-                self.stat_labels["Keyboard Events"].configure(text=str(session.keyboard_events))
-                self.stat_labels["Apps Tracked"].configure(text=str(session.app_switches))
-                self.stat_labels["Screenshots"].configure(text=str(session.screenshots_taken))
-                self.stat_labels["Productivity"].configure(text=f"{session.productivity_score:.1f}%")
-                
-                # Show final apps summary
-                if hasattr(session, 'apps_used') and session.apps_used != "[]":
+            # Stop timer in background thread to prevent blocking during finalization
+            def stop_background():
+                try:
+                    session = self.timer.stop()
+                    if session:
+                        self.timer_running = False
+                        self.timer_paused = False
+                        
+                        # Check if app window still exists before scheduling UI updates
+                        def safe_ui_update():
+                            try:
+                                # Check if widget still exists
+                                if not self.app.winfo_exists():
+                                    return
+                                    
+                                with self.ui_lock:
+                                    # Reset buttons
+                                    self.start_btn.configure(
+                                        text="▶ START", 
+                                        state="normal",
+                                        command=self.start_timer
+                                    )
+                                    self.pause_btn.configure(
+                                        state="disabled",
+                                        text="⏸ PAUSE",
+                                        command=self.pause_timer
+                                    )
+                                    self.stop_btn.configure(state="disabled")
+                                    self.timer_label.configure(text="00:00:00")
+                                    
+                                    # Update stats
+                                    self.stat_labels["Mouse Events"].configure(text=str(session.mouse_events))
+                                    self.stat_labels["Keyboard Events"].configure(text=str(session.keyboard_events))
+                                    self.stat_labels["Apps Traced"].configure(text=str(session.app_switches))
+                                    self.stat_labels["Screenshots"].configure(text=str(session.screenshots_taken))
+                                    self.stat_labels["Productivity"].configure(text=f"{session.productivity_score:.1f}%")
+                                    
+                                    # Show final apps summary
+                                    if hasattr(session, 'apps_used') and session.apps_used != "[]":
+                                        try:
+                                            apps_list = ast.literal_eval(session.apps_used)
+                                            if apps_list:
+                                                apps_text = "📱 Apps used:\n"
+                                                for i, app in enumerate(apps_list[:5]):
+                                                    apps_text += f"• {app}\n"
+                                                if len(apps_list) > 5:
+                                                    apps_text += f"• ... and {len(apps_list) - 5} more"
+                                                self.apps_label.configure(text=apps_text)
+                                        except:
+                                            pass
+                                    
+                                    # Show final time
+                                    total_seconds = session.total_duration
+                                    hours = int(total_seconds // 3600)
+                                    minutes = int((total_seconds % 3600) // 60)
+                                    seconds = int(total_seconds % 60)
+                                    final_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                                    
+                                    self.status_label.configure(
+                                        text=f"Session COMPLETE: {final_time}",
+                                        text_color=self.colors["accent_green"]
+                                    )
+                                    
+                                    # Show completion message (use after_idle to ensure it's safe)
+                                    if self.app.winfo_exists():
+                                        self.app.after_idle(lambda: messagebox.showinfo(
+                                            "Session Completed",
+                                            f"✅ Timer stopped\n"
+                                            f"⏱️  Total Time: {final_time}\n"
+                                            f"📊 Productivity: {session.productivity_score:.1f}%\n"
+                                            f"📱 Apps Used: {session.app_switches}\n"
+                                            f"💾 Data saved in background"
+                                        ))
+                            except Exception as e:
+                                print(f"Error updating UI in safe_ui_update: {e}")
+                        
+                        # Only schedule UI update if app still exists
+                        try:
+                            if self.app.winfo_exists():
+                                self.app.after(0, safe_ui_update)
+                        except:
+                            # Window might be destroyed, ignore
+                            pass
+                    else:
+                        def safe_error_update():
+                            try:
+                                if self.app.winfo_exists():
+                                    self.status_label.configure(
+                                        text="Stop failed", 
+                                        text_color=self.colors["accent_red"]
+                                    )
+                            except:
+                                pass
+                        
+                        try:
+                            if self.app.winfo_exists():
+                                self.app.after(0, safe_error_update)
+                        except:
+                            pass
+                            
+                except Exception as e:
+                    print(f"Error in stop_background: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    def safe_error_update():
+                        try:
+                            if self.app.winfo_exists():
+                                self.status_label.configure(
+                                    text="Stop error", 
+                                    text_color=self.colors["accent_red"]
+                                )
+                        except:
+                            pass
+                    
                     try:
-                        apps_list = ast.literal_eval(session.apps_used)
-                        if apps_list:
-                            apps_text = "📱 Apps used:\n"
-                            for i, app in enumerate(apps_list[:5]):
-                                apps_text += f"• {app}\n"
-                            
-                            if len(apps_list) > 5:
-                                apps_text += f"• ... and {len(apps_list) - 5} more"
-                            
-                            self.apps_label.configure(text=apps_text)
+                        if self.app.winfo_exists():
+                            self.app.after(0, safe_error_update)
                     except:
                         pass
-                
-                # Show final time
-                total_seconds = session.total_duration
-                hours = int(total_seconds // 3600)
-                minutes = int((total_seconds % 3600) // 60)
-                seconds = int(total_seconds % 60)
-                final_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                
-                self.status_label.configure(
-                    text=f"Session COMPLETE: {final_time}", 
-                    text_color="green"
-                )
-                
-                messagebox.showinfo("Session Completed", 
-                                  f"✅ Timer stopped\n"
-                                  f"⏱️  Total Time: {final_time}\n"
-                                  f"📊 Productivity: {session.productivity_score:.1f}%\n"
-                                  f"📱 Apps Used: {session.app_switches}\n"
-                                  f"💾 Data saved successfully")
-                
-                print(f"✅ Timer stopped. Total: {final_time}")
-                return session
-                
-            return None
-                
+            
+            threading.Thread(target=stop_background, daemon=True).start()
+            
         except Exception as e:
-            print(f"❌ Stop error: {e}")
-            return None
+            print(f"Stop error: {e}")
+            import traceback
+            traceback.print_exc()
     
     def update_apps_display(self):
         """Update the currently tracked apps display in real-time"""
         try:
             if self.timer_running and hasattr(self.timer, 'app_monitor') and self.timer.app_monitor:
-                # Use live_apps() instead of get_current_apps()
                 current_apps = self.timer.app_monitor.live_apps()
                 
                 if current_apps:
                     apps_text = ""
-                    for i, app in enumerate(current_apps[:5]):  # Show top 5
+                    for i, app in enumerate(current_apps[:5]):
                         app_name = app['app_name'].replace('.exe', '').replace('.EXE', '')
-                        apps_text += f"{i+1}. {app_name[:20]} - {app['duration_min']:.1f} min\n"
+                        apps_text += f"🔹 {app_name[:25]}\n   ⏱️ {app['duration_min']:.1f} min\n\n"
                     
                     if len(current_apps) > 5:
-                        apps_text += f"... and {len(current_apps) - 5} more"
+                        apps_text += f"... and {len(current_apps) - 5} more apps"
                     
-                    self.apps_label.configure(text=apps_text)
+                    # Schedule UI update on main thread with safety check
+                    def safe_update():
+                        try:
+                            if self.app.winfo_exists():
+                                self.apps_label.configure(text=apps_text)
+                        except:
+                            pass
+                    
+                    if self.app.winfo_exists():
+                        self.app.after(0, safe_update)
                 else:
-                    self.apps_label.configure(text="Scanning for apps...")
+                    def safe_update():
+                        try:
+                            if self.app.winfo_exists():
+                                self.apps_label.configure(text="Scanning for apps...")
+                        except:
+                            pass
+                    
+                    if self.app.winfo_exists():
+                        self.app.after(0, safe_update)
             
         except Exception as e:
-            print(f"⚠️ Apps display update error: {e}")
+            print(f"Apps display error: {e}")
     
     def update_real_time_stats(self):
         """Update live statistics during tracking"""
         try:
             if self.timer_running:
-                # Update mouse events
+                # Mouse events
                 if hasattr(self.timer, 'mouse_tracker') and self.timer.mouse_tracker:
                     mouse_stats = self.timer.mouse_tracker.get_stats()
                     if 'total_events' in mouse_stats:
-                        self.stat_labels["Mouse Events"].configure(
-                            text=str(mouse_stats['total_events'])
-                        )
+                        def safe_update():
+                            try:
+                                if self.app.winfo_exists():
+                                    self.stat_labels["Mouse Events"].configure(
+                                        text=str(mouse_stats['total_events'])
+                                    )
+                            except:
+                                pass
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, safe_update)
                 
-                # Update keyboard events
+                # Keyboard events
                 if hasattr(self.timer, 'keyboard_tracker') and self.timer.keyboard_tracker:
                     keyboard_stats = self.timer.keyboard_tracker.get_stats()
                     if 'total_keys_pressed' in keyboard_stats:
-                        self.stat_labels["Keyboard Events"].configure(
-                            text=str(keyboard_stats['total_keys_pressed'])
-                        )
+                        def safe_update():
+                            try:
+                                if self.app.winfo_exists():
+                                    self.stat_labels["Keyboard Events"].configure(
+                                        text=str(keyboard_stats['total_keys_pressed'])
+                                    )
+                            except:
+                                pass
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, safe_update)
                 
-                # Update screenshots
+                # Screenshots
                 if hasattr(self.timer, 'screenshot_capture') and self.timer.screenshot_capture:
                     screenshot_stats = self.timer.screenshot_capture.get_stats()
                     if 'total_captured' in screenshot_stats:
-                        self.stat_labels["Screenshots"].configure(
-                            text=str(screenshot_stats['total_captured'])
-                        )
+                        def safe_update():
+                            try:
+                                if self.app.winfo_exists():
+                                    self.stat_labels["Screenshots"].configure(
+                                        text=str(screenshot_stats['total_captured'])
+                                    )
+                            except:
+                                pass
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, safe_update)
                 
-                # Update apps tracked using get_summary() instead of get_session_summary()
+                # Apps tracked
                 if hasattr(self.timer, 'app_monitor') and self.timer.app_monitor:
                     app_summary = self.timer.app_monitor.get_summary()
                     if 'total_sessions' in app_summary:
-                        self.stat_labels["Apps Tracked"].configure(
-                            text=str(app_summary['total_sessions'])
-                        )
+                        def safe_update():
+                            try:
+                                if self.app.winfo_exists():
+                                    self.stat_labels["Apps Traced"].configure(
+                                        text=str(app_summary['total_sessions'])
+                                    )
+                            except:
+                                pass
+                        
+                        if self.app.winfo_exists():
+                            self.app.after(0, safe_update)
                     
         except Exception as e:
-            print(f"⚠️ Real-time stats error: {e}")
+            print(f"Stats update error: {e}")
     
     def start_timer_update(self):
-        """Start timer updates WITHOUT threads (safer for Tkinter)"""
-        print("⏱️ Starting timer display (thread-safe mode)...")
+        """Start timer updates using Tkinter's after() - thread-safe"""
         self.stop_update_thread = False
         self.update_counter = 0
         self._schedule_timer_update()
@@ -546,54 +1017,83 @@ class DashboardWindow:
             return
         
         try:
-            if self.timer_running:
-                # Update timer display
+            if self.timer_running and self.app.winfo_exists():
+                # Update every 100ms
                 status = self.timer.get_current_time()
                 self.timer_label.configure(text=status["formatted_time"])
                 
                 # Update apps display every 3 seconds
-                if self.update_counter % 30 == 0:  # ~3 seconds (30 * 100ms)
+                if self.update_counter % 30 == 0:
                     self.update_apps_display()
                 
                 # Update stats every 5 seconds
-                if self.update_counter % 50 == 0:  # ~5 seconds (50 * 100ms)
+                if self.update_counter % 50 == 0:
                     self.update_real_time_stats()
                 
                 self.update_counter += 1
                 
         except Exception as e:
-            print(f"⚠️ Timer update error: {e}")
+            print(f"Timer update error: {e}")
         
-        # Schedule next update in 100ms
-        self.app.after(100, self._schedule_timer_update)
+        # Schedule next update only if window still exists
+        if self.app.winfo_exists():
+            self.app.after(100, self._schedule_timer_update)
     
     def logout(self):
-        """Clean logout"""
+        """Clean logout with thread cleanup"""
         self.stop_update_thread = True
         
         if self.timer_running:
             if messagebox.askyesno("Logout", "Stop timer and logout?"):
-                self.timer.stop()
+                try:
+                    self.timer.stop()
+                    # Don't wait for threads - they're daemon threads and will clean up on their own
+                except Exception as e:
+                    print(f"Error stopping timer: {e}")
             else:
                 return
         
-        self.auth.logout()
-        self.app.destroy()
+        try:
+            self.auth.logout()
+        except Exception as e:
+            print(f"Error during logout: {e}")
+        
+        try:
+            self.app.destroy()
+        except Exception as e:
+            print(f"Error destroying window: {e}")
+        
         self.login_window.show()
     
     def on_closing(self):
-        """Window close handler"""
+        """Window close handler - safe cleanup with daemon threads"""
         self.stop_update_thread = True
         
         if self.timer_running:
             if messagebox.askyesno("Exit", "Stop timer and exit?"):
-                self.timer.stop()
+                try:
+                    self.timer.stop()
+                    # Don't wait for threads - they're daemon threads and will clean up on their own
+                except Exception as e:
+                    print(f"Error stopping timer: {e}")
             else:
                 return
         
-        self.auth.logout()
-        self.app.destroy()
-        self.login_window.app.quit()
+        try:
+            self.auth.logout()
+        except Exception as e:
+            print(f"Error during logout: {e}")
+        
+        try:
+            self.app.destroy()
+        except Exception as e:
+            print(f"Error destroying window: {e}")
+        
+        try:
+            self.login_window.app.quit()
+        except Exception as e:
+            print(f"Error quitting app: {e}")
+        
         sys.exit(0)
     
     def run(self):

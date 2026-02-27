@@ -1,18 +1,18 @@
 {
-  "session_id": "mouse_session_1770461344352",
-  "start_time": "2026-02-07T15:49:04.355471",
-  "end_time": "2026-02-07T15:49:34.416599",
-  "duration_seconds": 30.05,
-  "total_events": 36,
-  "move_events": 36,
+  "session_id": "mouse_session_1772185512484",
+  "start_time": "2026-02-27T14:45:12.496127",
+  "end_time": "2026-02-27T14:45:42.566389",
+  "duration_seconds": 30.04,
+  "total_events": 170,
+  "move_events": 170,
   "click_events": 0,
   "scroll_events": 0,
-  "total_distance": 409.0,
+  "total_distance": 14841.35,
   "average_velocity": 0,
-  "max_velocity": 615.4,
-  "active_percentage": 62.4,
-  "idle_percentage": 37.6,
-  "productivity_score": 63.9,
+  "max_velocity": 7803.13,
+  "active_percentage": 81.7,
+  "idle_percentage": 18.3,
+  "productivity_score": 73.0,
   "click_distribution": {
     "left": 0,
     "right": 0,
@@ -26,27 +26,33 @@
     "right": 0
   },
   "quadrant_distribution": {
-    "top_left": 36
+    "bottom_left": 115,
+    "top_left": 25,
+    "top_right": 27,
+    "bottom_right": 3
   },
   "time_buckets": {
-    "2026-02-07 15:49": {
-      "move_events": 36,
+    "2026-02-27 14:45": {
+      "move_events": 170,
       "click_events": 0,
       "scroll_events": 0,
-      "total_events": 36,
-      "distance": 409.0,
-      "active_seconds": 37.5,
-      "idle_seconds": 22.57,
-      "active_percentage": 62.4,
-      "productivity_score": 39.1,
-      "avg_velocity": 205.43,
+      "total_events": 170,
+      "distance": 14841.35,
+      "active_seconds": 49.05,
+      "idle_seconds": 10.97,
+      "active_percentage": 81.7,
+      "productivity_score": 66.6,
+      "avg_velocity": 1597.58,
       "quadrant_distribution": {
-        "top_left": 36
+        "bottom_left": 115,
+        "top_left": 25,
+        "top_right": 27,
+        "bottom_right": 3
       }
     }
   },
-  "peak_activity_minute": "2026-02-07 15:49",
-  "most_active_quadrant": "top_left",
+  "peak_activity_minute": "2026-02-27 14:45",
+  "most_active_quadrant": "bottom_left",
   "screen_resolution": "1600x900",
-  "timestamp": "2026-02-07T15:49:34.416735"
+  "timestamp": "2026-02-27T14:45:42.566640"
 }

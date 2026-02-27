@@ -7,31 +7,40 @@
     "interval_mode": "random_1_60_seconds"
   },
   "statistics": {
-    "total_captured": 2,
-    "in_memory": 2,
-    "total_size_kb": 258.25,
-    "last_capture": "2026-02-07T13:07:17.140863",
+    "total_captured": 3,
+    "in_memory": 3,
+    "total_size_kb": 300.93,
+    "last_capture": "2026-02-21T22:38:01.604552",
     "output_directory": "screenshots/8fd69d30-13f6-45f1-904a-efeb2ab06dee",
     "current_delay": null,
     "capture_active": false
   },
   "screenshots": [
     {
-      "timestamp": "2026-02-07T13:06:59.053095",
-      "filename": "screenshot_20260207_130659.jpg",
-      "filepath": "screenshots/8fd69d30-13f6-45f1-904a-efeb2ab06dee\\screenshot_20260207_130659.jpg",
+      "timestamp": "2026-02-21T22:37:02.292824",
+      "filename": "screenshot_20260221_223702.jpg",
+      "filepath": "screenshots/8fd69d30-13f6-45f1-904a-efeb2ab06dee\\screenshot_20260221_223702.jpg",
       "width": 1600,
       "height": 900,
-      "size_kb": 122.82,
+      "size_kb": 99.75,
       "app_active": null
     },
     {
-      "timestamp": "2026-02-07T13:07:17.140863",
-      "filename": "screenshot_20260207_130717.jpg",
-      "filepath": "screenshots/8fd69d30-13f6-45f1-904a-efeb2ab06dee\\screenshot_20260207_130717.jpg",
+      "timestamp": "2026-02-21T22:37:32.459201",
+      "filename": "screenshot_20260221_223732.jpg",
+      "filepath": "screenshots/8fd69d30-13f6-45f1-904a-efeb2ab06dee\\screenshot_20260221_223732.jpg",
       "width": 1600,
       "height": 900,
-      "size_kb": 135.43,
+      "size_kb": 100.58,
+      "app_active": null
+    },
+    {
+      "timestamp": "2026-02-21T22:38:01.604552",
+      "filename": "screenshot_20260221_223801.jpg",
+      "filepath": "screenshots/8fd69d30-13f6-45f1-904a-efeb2ab06dee\\screenshot_20260221_223801.jpg",
+      "width": 1600,
+      "height": 900,
+      "size_kb": 100.6,
       "app_active": null
     }
   ]

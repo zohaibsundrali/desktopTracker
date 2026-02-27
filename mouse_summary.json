@@ -1,17 +1,17 @@
 {
-  "session_id": "mouse_session_1771656658521",
-  "start_time": "2026-02-21T11:50:58.522031",
-  "end_time": "2026-02-21T11:51:27.804634",
-  "duration_seconds": 29.26,
-  "total_events": 140,
-  "move_events": 140,
+  "session_id": "mouse_session_1771753739902",
+  "start_time": "2026-02-22T14:48:59.903117",
+  "end_time": "2026-02-22T14:49:37.336865",
+  "duration_seconds": 37.41,
+  "total_events": 117,
+  "move_events": 117,
   "click_events": 0,
   "scroll_events": 0,
-  "total_distance": 9706.41,
+  "total_distance": 2036.31,
   "average_velocity": 0,
-  "max_velocity": 8157.94,
-  "active_percentage": 92.6,
-  "idle_percentage": 7.4,
+  "max_velocity": 1386.81,
+  "active_percentage": 89.1,
+  "idle_percentage": 10.9,
   "productivity_score": 73.0,
   "click_distribution": {
     "left": 0,
@@ -26,46 +26,44 @@
     "right": 0
   },
   "quadrant_distribution": {
-    "bottom_left": 27,
-    "top_left": 61,
-    "top_right": 51,
-    "bottom_right": 1
+    "top_left": 47,
+    "top_right": 57,
+    "bottom_right": 13
   },
   "time_buckets": {
-    "2026-02-21 11:50": {
+    "2026-02-22 14:48": {
       "move_events": 0,
       "click_events": 0,
       "scroll_events": 0,
       "total_events": 0,
       "distance": 0.0,
-      "active_seconds": 1.38,
+      "active_seconds": 0.0,
       "idle_seconds": 0.0,
       "active_percentage": 100.0,
       "productivity_score": 0.0,
       "avg_velocity": 0.0,
       "quadrant_distribution": {}
     },
-    "2026-02-21 11:51": {
-      "move_events": 140,
+    "2026-02-22 14:49": {
+      "move_events": 117,
       "click_events": 0,
       "scroll_events": 0,
-      "total_events": 140,
-      "distance": 9706.41,
-      "active_seconds": 52.76,
-      "idle_seconds": 4.3,
-      "active_percentage": 92.5,
-      "productivity_score": 67.3,
-      "avg_velocity": 1018.26,
+      "total_events": 117,
+      "distance": 2036.31,
+      "active_seconds": 66.56,
+      "idle_seconds": 8.18,
+      "active_percentage": 89.1,
+      "productivity_score": 62.8,
+      "avg_velocity": 227.14,
       "quadrant_distribution": {
-        "bottom_left": 27,
-        "top_left": 61,
-        "top_right": 51,
-        "bottom_right": 1
+        "top_left": 47,
+        "top_right": 57,
+        "bottom_right": 13
       }
     }
   },
-  "peak_activity_minute": "2026-02-21 11:51",
-  "most_active_quadrant": "top_left",
+  "peak_activity_minute": "2026-02-22 14:49",
+  "most_active_quadrant": "top_right",
   "screen_resolution": "1600x900",
-  "timestamp": "2026-02-21T11:51:27.804688"
+  "timestamp": "2026-02-22T14:49:37.336946"
 }
