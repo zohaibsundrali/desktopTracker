@@ -1,27 +1,4 @@
-"""
-screenshot_capture.py
-─────────────────────
-Captures screenshots at random intervals, uploads them directly to
-Supabase Storage (in-memory only — nothing written to disk), and
-inserts metadata into a Supabase table.
 
-Requirements:
-    pip install pyautogui pillow supabase python-dotenv pandas
-
-.env variables:
-    SUPABASE_URL      – your project URL
-    SUPABASE_KEY      – service-role or anon key
-    DEVELOPER_ID      – identifier stored with each upload
-    DEVELOPER_EMAIL   – email stored with each upload  (optional)
-
-Supabase setup:
-    • Storage bucket  : screenshots_bucket  (public or private)
-    • Table           : screenshots
-      Columns: id (uuid pk), user_id (text), email (text),
-               filename (text), storage_path (text), public_url (text),
-               width (int4), height (int4), size_kb (float8),
-               timestamp (timestamptz), app_active (text)
-"""
 
 from __future__ import annotations
 
@@ -43,25 +20,55 @@ from PIL import Image, ImageDraw, ImageFont
 import tkinter as tk
 from tkinter import ttk
 
-load_dotenv()
+# Load .env from the same directory as this script — works regardless of
+# where the process is launched from.
+_ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(dotenv_path=_ENV_PATH, override=True)
 
 # ── Environment ───────────────────────────────────────────────────────────────
 
-SUPABASE_URL    = os.getenv("SUPABASE_URL")
-SUPABASE_KEY    = os.getenv("SUPABASE_KEY")
-DEVELOPER_ID    = os.getenv("DEVELOPER_ID", "unknown")
-DEVELOPER_EMAIL = os.getenv("DEVELOPER_EMAIL", "unknown")
+import uuid as _uuid
+
+SUPABASE_URL       = os.getenv("SUPABASE_URL", "").strip()
+SUPABASE_KEY       = os.getenv("SUPABASE_KEY", "").strip()
+DEVELOPER_EMAIL    = os.getenv("DEVELOPER_EMAIL", "unknown").strip()
+
+# DEVELOPER_USERNAME : plain string — used only as the Storage folder name
+# DEVELOPER_ID       : must be a valid UUID — stored in the `developer_id` uuid column
+DEVELOPER_USERNAME = os.getenv("DEVELOPER_USERNAME", "developer").strip()
+_raw_dev_id        = os.getenv("DEVELOPER_ID", "").strip()
+
+try:
+    DEVELOPER_ID = str(_uuid.UUID(_raw_dev_id))   # validated UUID string
+except (ValueError, AttributeError):
+    DEVELOPER_ID = None                            # will print a clear error at startup
 
 STORAGE_BUCKET = "screenshots"
 METADATA_TABLE = "screenshots"
+
+# ── Startup environment check ─────────────────────────────────────────────────
+
+def _check_env():
+    
+    ok = True
+    
+    
+
+    if DEVELOPER_ID:
+        print(f"  {'DEVELOPER_ID':22s}: ✅ {DEVELOPER_ID}")
+    else:
+        ok = False
+
+    print("─" * 60)
+    return ok
 
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def _supabase_client():
-    """Return a Supabase client or None if credentials are missing."""
+    
     if not SUPABASE_URL or not SUPABASE_KEY:
-        print("⚠️  SUPABASE_URL / SUPABASE_KEY not set — upload skipped.")
+        
         return None
     from supabase import create_client
     return create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -78,15 +85,13 @@ class ScreenshotInfo:
     size_kb:    float
     public_url: Optional[str] = None
     app_active: Optional[str] = None
+    annotation_text: Optional[str] = None
 
 
 # ── Popup notification ────────────────────────────────────────────────────────
 
 class NotificationPopup:
-    """
-    Lightweight bottom-right toast that says "Screenshot captured successfully".
-    Runs in its own daemon thread so it never blocks capture.
-    """
+    
 
     def __init__(self):
         self._q:      queue.Queue = queue.Queue()
@@ -186,10 +191,7 @@ class NotificationPopup:
 # ── Main capture engine ───────────────────────────────────────────────────────
 
 class ScreenshotCapture:
-    """
-    Captures screenshots in-memory at random intervals and uploads
-    directly to Supabase Storage + metadata table.
-    """
+   
 
     def __init__(
         self,
@@ -222,8 +224,7 @@ class ScreenshotCapture:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        print("🚀 Capture started  (Ctrl+C to stop)")
-        print(f"   Interval: {self.interval_min}–{self.interval_max} seconds at random")
+        
 
     def stop(self):
         self._running = False
@@ -306,7 +307,7 @@ class ScreenshotCapture:
             return info
 
         except Exception as exc:
-            print(f"❌ Capture error: {exc}")
+            
             return None
 
     # ── annotation helper ─────────────────────────────────────────────────────
@@ -340,46 +341,70 @@ class ScreenshotCapture:
     # ── Supabase upload ───────────────────────────────────────────────────────
 
     def _upload(self, info: ScreenshotInfo, data: bytes) -> Optional[str]:
-        """Upload bytes to Storage and insert metadata row. Returns public URL."""
+        """
+        Upload screenshot bytes to Supabase Storage, then immediately insert
+        metadata into the screenshots table using the same capture timestamp.
+        Database insert only runs after a confirmed successful storage upload.
+        Returns the public URL on full success, None on any failure.
+        """
         sb = _supabase_client()
         if sb is None:
             return None
 
-        storage_path = f"{DEVELOPER_ID}/{info.filename}"
-        mime = "image/jpeg" if info.filename.endswith(".jpg") else "image/png"
+        mime         = "image/jpeg" if info.filename.endswith(".jpg") else "image/png"
+        storage_path = f"{DEVELOPER_USERNAME}/{info.filename}"
 
-        # 1. Storage upload
+        # ── Step 1: Storage upload ────────────────────────────────────────────
+        # Gate: if this fails we return immediately — no metadata insert attempted.
         try:
             sb.storage.from_(STORAGE_BUCKET).upload(
                 path=storage_path,
                 file=data,
                 file_options={"content-type": mime},
             )
+            
         except Exception as exc:
-            print(f"   ❌ Storage upload failed: {exc}")
-            return None
+            
+            return None   # hard stop; table stays clean
 
-        # 2. Public URL
+        # ── Step 2: Retrieve public URL ───────────────────────────────────────
         try:
-            public_url = sb.storage.from_(STORAGE_BUCKET).get_public_url(storage_path)
-        except Exception:
+            public_url: Optional[str] = sb.storage.from_(STORAGE_BUCKET).get_public_url(storage_path)
+        except Exception as exc:
+            
             public_url = None
 
-        # 3. Metadata row
+        # ── Step 3: Metadata insert (runs ONLY after confirmed upload) ────────
+        # DEVELOPER_ID was validated at startup — if None, the .env UUID is missing/invalid.
+        if DEVELOPER_ID is None:
+          
+            return public_url  # upload already succeeded; preserve the URL
+
+        is_annotated = bool(info.annotation_text)
+
+        row = {
+            "developer_id":    DEVELOPER_ID,         # uuid — validated at startup
+            "developer_email": DEVELOPER_EMAIL,       # text
+            "filename":        info.filename,          # text
+            "storage_path":    storage_path,           # text (unique constraint)
+            "public_url":      public_url,             # text | null
+            "width":           info.width,             # integer
+            "height":          info.height,            # integer
+            "size_kb":         round(info.size_kb, 2), # numeric(10,2)
+            "mime_type":       mime,                   # text
+            "app_active":      info.app_active,        # text | null
+            "is_annotated":    is_annotated,           # boolean
+            "annotation_text": info.annotation_text,  # text | null
+            "timestamp":       info.timestamp,         # timestamptz — same as capture time
+        }
+
         try:
-            sb.table(METADATA_TABLE).insert({
-                "user_id":      DEVELOPER_ID,
-                "email":        DEVELOPER_EMAIL,
-                "filename":     info.filename,
-                "storage_path": storage_path,
-                "public_url":   public_url,
-                "width":        info.width,
-                "height":       info.height,
-                "size_kb":      info.size_kb,
-                "timestamp":    info.timestamp,
-                "app_active":   info.app_active,
-            }).execute()
-            print(f"   ☁️  Uploaded → {storage_path}")
+            result = sb.table(METADATA_TABLE).insert(row).execute()
+            # Supabase Python client can return empty data without raising on RLS denial
+            if result.data:
+                print(f"   🗄️  Metadata inserted  (id: {result.data[0].get('id', '?')})") 
+            else:
+                print("   ⚠️  Metadata insert returned no data — check RLS policies.")
         except Exception as exc:
             print(f"   ❌ Metadata insert failed: {exc}")
 
@@ -402,33 +427,23 @@ class ScreenshotCapture:
 
     def print_summary(self):
         s = self.stats()
-        print("\n" + "=" * 52)
-        print("  📊  CAPTURE SUMMARY")
-        print("=" * 52)
-        print(f"  Total uploaded : {s['total_captured']}")
-        print(f"  In history     : {s['history_count']}")
-        print(f"  Total size     : {s['total_size_kb']:.1f} KB")
-        print(f"  Status         : {'ACTIVE' if s['capture_active'] else 'STOPPED'}")
+      
         if self._screenshots:
-            print("\n  Recent captures:")
+            
             for i, ss in enumerate(self.recent(5), 1):
                 t = datetime.fromisoformat(ss.timestamp).strftime("%H:%M:%S")
-                print(f"    {i}. [{t}]  {ss.filename}  ({ss.size_kb} KB)")
-        print("=" * 52 + "\n")
+                
+        
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────
 
 def main():
-    print("\n" + "=" * 60)
-    print("  📸  RANDOM-INTERVAL SCREENSHOT CAPTURE  →  SUPABASE")
-    print("=" * 60)
-    print(f"  Developer : {DEVELOPER_ID}")
-    print(f"  Bucket    : {STORAGE_BUCKET}")
-    print(f"  Table     : {METADATA_TABLE}")
-    print("  Interval  : 1 – 60 seconds (random)")
-    print("  Storage   : In-memory only (no local files)")
-    print("=" * 60)
+ 
+
+    if not _check_env():
+        
+        return
 
     capture = ScreenshotCapture(
         interval_min=1,
