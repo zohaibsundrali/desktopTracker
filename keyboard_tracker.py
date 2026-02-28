@@ -1,36 +1,4 @@
-# =============================================================================
-# keyboard_tracker.py — Professional Developer Activity Tracking System
-# Version: 4.1.0 | Continuous Tracking | Real-Time Per-Minute Supabase Upload
-# =============================================================================
-#
-# CHANGELOG v4.1 (over v4.0)
-# ---------------------------
-# [FIX-1]  active_seconds is now derived SOLELY from the monotonic window
-#          timer, not from pynput bucket accumulation. This guarantees:
-#            active_seconds <= window_seconds always
-#            idle_seconds   == window_seconds - active_seconds always
-#            activity_pct   == active_seconds / window_seconds * 100
-#
-# [FIX-2]  _UploadWorker tracks its own window_start with time.monotonic()
-#          and passes the real elapsed seconds to compute_core_stats() so
-#          partial final windows are sized correctly on CTRL+C.
-#
-# [FIX-3]  All Supabase calls wrapped in isolated try/except — a network
-#          failure logs the error and continues tracking; never crashes.
-#
-# [FIX-4]  developer_id / developer_email validated at construction time;
-#          asserted non-null in every payload before upload.
-#
-# [FIX-5]  CTRL+C path confirmed to flush the last partial window and
-#          produce an accurate partial-minute activity percentage.
-#
-# PRESERVED (unchanged from v4.0)
-# --------------------------------
-#   _TrackingCore architecture, snapshot_and_reset_window(),
-#   analytics formulas, scoring weights (0.6 / 0.3 / 0.1),
-#   threading model, event capture, time attribution loop,
-#   session summary system, dual event+bucket buffers.
-# =============================================================================
+
 
 from __future__ import annotations
 
@@ -42,11 +10,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple
 
+import sys
 import numpy as np
 import pandas as pd
 from pynput import keyboard
+from dotenv import load_dotenv 
+import os
 
-
+load_dotenv()
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -835,33 +806,40 @@ class _UploadWorker:
 
             # [FIX-4] assert identity fields are never null
             payload = {
-                # Identity
+                # Identity - map to your schema
                 "session_id":       self._session_id,
-                "minute_timestamp": minute_timestamp,
+                "user_email":       self._developer_email or "",  # CRITICAL: maps to NOT NULL column
                 "developer_id":     self._developer_id   or "",
                 "developer_email":  self._developer_email or "",
+                
                 # Score
                 "activity_score":   score.final_score,
-                # Time
+                
+                # Time metrics
                 "keyboard_activity_percentage": cs.activity_pct,
-                "active_time_minutes":          round(cs.active_seconds / 60, 4),
-                "idle_time_minutes":            round(cs.idle_seconds   / 60, 4),
-                "total_time_minutes":           round(cs.total_seconds  / 60, 4),
-                # Keystrokes
+                "active_time_minutes":          round(cs.active_seconds / 60, 2),
+                "idle_time_minutes":            round(cs.idle_seconds   / 60, 2),
+                "total_time_minutes":           round(cs.total_seconds  / 60, 2),
+                
+                # Keystroke metrics
                 "total_keys":        cs.total_keys,
                 "unique_keys":       cs.unique_keys,
                 "words_per_minute":  cs.wpm,
                 "backspace_ratio":   cs.backspace_ratio,
                 "special_keys_ratio": cs.special_ratio,
+                "key_events":        cs.total_keys,  # Add this for schema
+                
                 # Advanced
                 "avg_key_duration":  cs.avg_duration,
                 "typing_speed_std":  cs.std_duration,
                 "iki_std":           cs.iki_std,
+                
                 # JSONB
                 "heatmap_data":       heatmap,
                 "per_minute_summary": (
                     per_min.to_dict("records") if not per_min.empty else []
                 ),
+                
                 # Audit
                 "tracked_at": datetime.now().isoformat(),
             }
@@ -1125,27 +1103,40 @@ class KeyboardTracker:
             minute_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
 
             payload = {
-                "session_id":       session_id or self._session_id,
-                "minute_timestamp": minute_timestamp,
-                "developer_id":     developer_id   or self._developer_id   or "",
-                "developer_email":  developer_email or self._developer_email or "",
-                "activity_score":   stats["activity_score"],
-                "keyboard_activity_percentage": stats["keyboard_activity_percentage"],
-                "active_time_minutes":  stats["active_time_minutes"],
-                "idle_time_minutes":    stats["idle_time_minutes"],
-                "total_time_minutes":   stats["total_time_minutes"],
-                "total_keys":       stats["total_keys_pressed"],
-                "unique_keys":      stats["unique_keys_used"],
-                "words_per_minute": stats["words_per_minute"],
-                "avg_key_duration": stats["avg_key_duration"],
-                "typing_speed_std": stats["typing_speed_std"],
-                "special_keys_ratio": stats["special_keys_ratio"],
-                "backspace_ratio":  stats["backspace_ratio"],
-                "heatmap_data":     self.get_heatmap_data(),
-                "per_minute_summary": (
-                    per_min.to_dict("records") if not per_min.empty else []
-                ),
-                "tracked_at": datetime.now().isoformat(),
+                # Identity - include BOTH fields to satisfy constraints
+                "session_id":       self._session_id,
+                "user_email":       self._developer_email or "",  # ADD THIS - maps to your schema
+                "developer_id":     self._developer_id   or "",
+                "developer_email":  self._developer_email or "",  # Keep for your code
+                
+                # Score
+                "activity_score":   score.final_score,
+                
+                # Time metrics - match schema precision
+                "keyboard_activity_percentage": cs.activity_pct,
+                "active_time_minutes":          round(cs.active_seconds / 60, 2),
+                "idle_time_minutes":            round(cs.idle_seconds   / 60, 2),
+                "total_time_minutes":           round(cs.total_seconds  / 60, 2),
+                
+                # Keystroke metrics
+                "total_keys":           cs.total_keys,
+                "unique_keys":          cs.unique_keys,
+                "words_per_minute":     round(cs.wpm, 2),
+                "backspace_ratio":      round(cs.backspace_ratio, 1),
+                "special_keys_ratio":   round(cs.special_ratio, 1),
+                "key_events":           cs.total_keys,  # Add this for schema
+                
+                # Advanced metrics
+                "avg_key_duration":     round(cs.avg_duration, 4),
+                "typing_speed_std":     round(cs.std_duration, 4),
+                "iki_std":              round(cs.iki_std, 4),  # Now exists after previous fix
+                
+                # JSONB
+                "heatmap_data":         heatmap,
+                "per_minute_summary":   per_min.to_dict("records") if not per_min.empty else [],
+                
+                # Audit
+                "tracked_at":           datetime.now().isoformat(),
             }
 
             try:
@@ -1357,22 +1348,38 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # Edit before running
     # ------------------------------------------------------------------
-    SUPABASE_URL    = "https://your-project.supabase.co"
-    SUPABASE_KEY    = "your-anon-or-service-key"
-    DEVELOPER_ID    = "DEV-001"
-    DEVELOPER_EMAIL = "developer@company.com"
+    SUPABASE_URL    = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY    = os.getenv("SUPABASE_KEY")  # Note: Using SUPABASE_KEY from .env
+    DEVELOPER_ID    = os.getenv("DEVELOPER_ID")
+    DEVELOPER_EMAIL = os.getenv("DEVELOPER_EMAIL")
     UPLOAD_INTERVAL = 60   # seconds per upload cycle
 
+
+    if not all([SUPABASE_URL, SUPABASE_KEY, DEVELOPER_ID, DEVELOPER_EMAIL]):
+        print("⚠️  WARNING: Missing environment variables. Check your .env file.")
+        print(f"SUPABASE_URL: {'✅' if SUPABASE_URL else '❌'}")
+        print(f"SUPABASE_KEY: {'✅' if SUPABASE_KEY else '❌'}")
+        print(f"DEVELOPER_ID: {'✅' if DEVELOPER_ID else '❌'}")
+        print(f"DEVELOPER_EMAIL: {'✅' if DEVELOPER_EMAIL else '❌'}")
+        
+        # Ask user if they want to continue without Supabase
+        response = input("Continue without Supabase? (y/n): ")
+        if response.lower() != 'y':
+            print("Exiting...")
+            sys.exit(1)
     # ------------------------------------------------------------------
     # Connect to Supabase (optional — tracker works offline too)
     # ------------------------------------------------------------------
     supabase_client = None
-    try:
-        from supabase import create_client
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("✅  Supabase connected")
-    except Exception as e:
-        print(f"⚠️  Supabase not connected ({e}) — running in local-only mode")
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            from supabase import create_client
+            supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+            print("✅  Supabase connected")
+        except Exception as e:
+            print(f"⚠️  Supabase not connected ({e}) — running in local-only mode")
+    else:
+        print("⚠️  Supabase credentials missing — running in local-only mode")
 
     # ------------------------------------------------------------------
     # Start tracker — blocks until CTRL+C
