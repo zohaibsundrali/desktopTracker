@@ -10,7 +10,8 @@ import time
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
-
+# ── Local ─────────────────────────────────────────────────────────────────────
+from app_name_converter import AppNameConverter
 # ── Third-party ───────────────────────────────────────────────────────────────
 import psutil
 from dotenv import load_dotenv
@@ -333,22 +334,22 @@ class AppSession:
     """
 
     __slots__ = (
-        "app_name", "window_title", "start_time", "end_time",
-        "active_seconds",           # ✅ NEW: accumulates only non-idle focus time
-        "duration_seconds", "duration_minutes", "saved_cloud",
+        "app_name", "app_name_raw", "window_title", "start_time", "end_time",
+        "active_seconds", "duration_seconds", "duration_minutes", "saved_cloud",
     )
-
-    def __init__(self, app_name: str, window_title: str, start_time: datetime):
-        if not app_name or not isinstance(app_name, str):
-            raise ValueError(f"Invalid app_name: must be non-empty string, got {app_name!r}")
+    
+    def __init__(self, app_name_raw: str, window_title: str, start_time: datetime):
+        if not app_name_raw or not isinstance(app_name_raw, str):
+            raise ValueError(f"Invalid app_name: must be non-empty string, got {app_name_raw!r}")
         if not start_time or not isinstance(start_time, datetime):
             raise ValueError(f"Invalid start_time: must be datetime, got {start_time!r}")
 
-        self.app_name          = app_name.strip()
+        self.app_name_raw      = app_name_raw.strip().lower()          # e.g. "chrome.exe"
+        self.app_name          = AppNameConverter.convert(app_name_raw) # e.g. "Google Chrome"
         self.window_title      = window_title.strip() if window_title else ""
         self.start_time        = start_time
         self.end_time: Optional[datetime] = None
-        self.active_seconds    = 0.0    # ✅ NEW
+        self.active_seconds    = 0.0
         self.duration_seconds  = 0.0
         self.duration_minutes  = 0.0
         self.saved_cloud       = False
@@ -364,13 +365,13 @@ class AppSession:
         self.duration_seconds = round(self.active_seconds, 2)
         self.duration_minutes = round(self.active_seconds / 60, 4)
 
-    def to_cloud_dict(self, user_login: str, user_email: str,
-                      session_id: str) -> dict:
+    def to_cloud_dict(self, user_login: str, user_email: str, session_id: str) -> dict:
         return {
             "user_login":       user_login,
             "user_email":       user_email,
             "session_id":       session_id,
-            "app_name":         self.app_name,
+            "app_name":         self.app_name,        # "Google Chrome"
+            "app_name_raw":     self.app_name_raw,    # "chrome.exe"
             "window_title":     self.window_title,
             "start_time":       self.start_time.isoformat(),
             "end_time":         self.end_time.isoformat() if self.end_time else None,
