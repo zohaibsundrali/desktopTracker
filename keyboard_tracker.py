@@ -810,7 +810,7 @@ class _UploadWorker:
                 "session_id":       self._session_id,
                 "user_email":       self._developer_email or "",  # CRITICAL: maps to NOT NULL column
                 "developer_id":     self._developer_id   or "",
-                "developer_email":  self._developer_email or "",
+                
                 
                 # Score
                 "activity_score":   score.final_score,
@@ -825,17 +825,14 @@ class _UploadWorker:
                 "total_keys":        cs.total_keys,
                 "unique_keys":       cs.unique_keys,
                 "words_per_minute":  cs.wpm,
-                "backspace_ratio":   cs.backspace_ratio,
-                "special_keys_ratio": cs.special_ratio,
-                "key_events":        cs.total_keys,  # Add this for schema
+                
+                 
                 
                 # Advanced
-                "avg_key_duration":  cs.avg_duration,
-                "typing_speed_std":  cs.std_duration,
-                "iki_std":           cs.iki_std,
+            
                 
                 # JSONB
-                "heatmap_data":       heatmap,
+                
                 "per_minute_summary": (
                     per_min.to_dict("records") if not per_min.empty else []
                 ),
@@ -848,9 +845,9 @@ class _UploadWorker:
             if self._client:
                 try:
                     (
-                        self._client
+                        self._client     
                         .table("keyboard_stats")
-                        .upsert(payload, on_conflict="session_id,minute_timestamp")
+                        .insert(payload)
                         .execute()
                     )
                     print(
