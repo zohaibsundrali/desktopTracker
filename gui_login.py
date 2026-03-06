@@ -972,7 +972,7 @@ class DashboardWindow:
                 
                 # Screenshots
                 if hasattr(self.timer, 'screenshot_capture') and self.timer.screenshot_capture:
-                    screenshot_stats = self.timer.screenshot_capture.get_stats()
+                    screenshot_stats = self.timer.screenshot_capture.stats()
                     if 'total_captured' in screenshot_stats:
                         def safe_update():
                             try:
