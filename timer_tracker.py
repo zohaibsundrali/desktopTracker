@@ -373,6 +373,7 @@ class TimerTracker:
     def _tracker_lifecycle(self, ctx: _SessionContext) -> None:
         log.info(f"TrackerLifecycle started [{ctx.session_id}]")
         self._create_all_trackers(ctx)
+        self._spawn(lambda: self._periodic_stats_loop(ctx), "PeriodicStatsUpload")
         while ctx.wait_if_paused():
             time.sleep(1.0)
         log.info(f"TrackerLifecycle exiting [{ctx.session_id}]")
@@ -393,24 +394,108 @@ class TimerTracker:
         log.info(f"DisplayLoop exiting [{ctx.session_id}]")
 
     # =========================================================================
-    #  TRACKER MANAGEMENT — workers receive pause_ctrl at construction
+    #  PERIODIC STATS UPLOAD (every 60 seconds)
+    # =========================================================================
+
+    def _periodic_stats_loop(self, ctx: _SessionContext) -> None:
+        """Collect stats from all trackers and insert into Supabase every 60s."""
+        INTERVAL = 60
+        log.info(f"PeriodicStatsUpload started [{ctx.session_id}]")
+
+        while not ctx.stop_event.is_set():
+            # Sleep in 1-second increments so we can exit quickly on stop
+            for _ in range(INTERVAL):
+                if ctx.stop_event.is_set():
+                    break
+                time.sleep(1.0)
+
+            if ctx.stop_event.is_set():
+                break
+
+            # Skip upload if session is paused
+            if ctx.pause_ctrl.is_paused:
+                continue
+
+            try:
+                self._upload_periodic_stats(ctx.session_id)
+            except Exception as e:
+                log.error(f"Periodic stats upload error: {e}")
+
+        log.info(f"PeriodicStatsUpload exiting [{ctx.session_id}]")
+
+    def _upload_periodic_stats(self, session_id: str) -> None:
+        """Gather current stats from all trackers and insert one row into Supabase."""
+        elapsed = self.instant_timer.get_elapsed()
+
+        mouse_events    = 0
+        keyboard_events = 0
+        app_switches    = 0
+        screenshots     = 0
+        apps_used       = "[]"
+
+        if self.mouse_tracker:
+            try:
+                mouse_events = self.mouse_tracker.get_stats().get("total_events", 0)
+            except Exception:
+                pass
+        if self.keyboard_tracker:
+            try:
+                keyboard_events = self.keyboard_tracker.get_stats().get("total_keys_pressed", 0)
+            except Exception:
+                pass
+        if self.app_monitor:
+            try:
+                summary      = self.app_monitor.get_summary()
+                app_switches = len(summary.get("top_apps", []))
+                apps_used    = str([a["app"] for a in summary.get("top_apps", [])])
+            except Exception:
+                pass
+        if self.screenshot_capture:
+            try:
+                screenshots = self.screenshot_capture.stats().get("total_captured", 0)
+            except Exception:
+                pass
+
+        row = {
+            "session_id":       session_id,
+            "user_id":          self.user_id,
+            "user_email":       self.user_email,
+            "start_time":       datetime.now().isoformat(),
+            "total_duration":   round(elapsed, 2),
+            "active_duration":  round(elapsed, 2),
+            "idle_duration":    0.0,
+            "mouse_events":     mouse_events,
+            "keyboard_events":  keyboard_events,
+            "app_switches":     app_switches,
+            "screenshots_taken": screenshots,
+            "apps_used":        apps_used,
+            "status":           "periodic",
+            "productivity_score": 0.0,
+        }
+
+        try:
+            resp = self._supabase.table("productivity_sessions").insert(row).execute()
+            if getattr(resp, "data", None):
+                log.info(f"Periodic stats uploaded for {session_id} at {elapsed:.0f}s")
+            else:
+                log.warning(f"Periodic stats insert returned no data")
+        except Exception as e:
+            log.error(f"Periodic stats DB error: {e}")
+
+    # =========================================================================
+    #  TRACKER MANAGEMENT
     # =========================================================================
 
     def _create_all_trackers(self, ctx: _SessionContext) -> None:
         """
-        Constructs every worker with ctx.pause_ctrl injected.
-        Workers call pause_ctrl.wait_if_paused() internally — they need
-        no other coordination from TimerTracker.
+        Constructs every tracker and starts them.
         """
         if ctx.stop_event.is_set():
             return
 
-        pause_ctrl = ctx.pause_ctrl   # same object injected into all workers
-
         try:
             self.app_monitor = AppMonitor(
                 user_email=self.user_email,
-                pause_ctrl=pause_ctrl,            # ← injected
             )
             self.app_monitor.start()
             log.info("AppMonitor started")
@@ -425,7 +510,9 @@ class TimerTracker:
             from mouse_tracker import MouseTracker
             self.mouse_tracker = MouseTracker(
                 idle_threshold=2.0,
-                pause_ctrl=pause_ctrl,            # ← injected
+                upload_interval=60,
+                developer_id=self.user_id,
+                developer_name=self.user_email,
             )
             self.mouse_tracker.start()
             log.info("MouseTracker started")
@@ -439,10 +526,16 @@ class TimerTracker:
         try:
             from keyboard_tracker import KeyboardTracker
             self.keyboard_tracker = KeyboardTracker(
-                save_interval=30,
-                pause_ctrl=pause_ctrl,            # ← injected
+                supabase_client=self._supabase,
+                session_duration_seconds=60,
+                developer_id=self.user_id,
+                developer_email=self.user_email,
             )
-            self.keyboard_tracker.start_tracking()
+            # start_tracking() blocks, so run the listener in a background thread
+            self._spawn(
+                lambda: self._run_keyboard_tracker(ctx),
+                "KeyboardTrackerRunner",
+            )
             log.info("KeyboardTracker started")
         except Exception as e:
             log.error(f"KeyboardTracker init: {e}")
@@ -454,11 +547,13 @@ class TimerTracker:
         try:
             from screenshot_capture import ScreenshotCapture
             self.screenshot_capture = ScreenshotCapture(
-                output_dir=f"screenshots/{self.user_id}",
-                interval_sec=30,
-                pause_ctrl=pause_ctrl,            # ← injected
+                interval_min=1,
+                interval_max=60,
+                developer_id=self.user_id,
+                developer_email=self.user_email,
+                developer_username=self.user_email.split('@')[0] if self.user_email else None,
             )
-            self.screenshot_capture.start_capture()
+            self.screenshot_capture.start()
             log.info("ScreenshotCapture started")
         except Exception as e:
             log.error(f"ScreenshotCapture init: {e}")
@@ -466,12 +561,41 @@ class TimerTracker:
 
         log.info("All trackers initialised")
 
+    def _run_keyboard_tracker(self, ctx: _SessionContext) -> None:
+        """Run KeyboardTracker in a non-blocking way."""
+        try:
+            from keyboard_tracker import _UploadWorker as _KBUploadWorker
+            from keyboard_tracker import _empty_session_summary as _kb_empty_summary
+
+            kt = self.keyboard_tracker
+            if kt is None:
+                return
+            kt.session_summary = _kb_empty_summary()
+            kt.session_summary["start_time"] = datetime.now().isoformat()
+            kt.session_summary["session_id"] = kt._session_id
+            kt._tracking.start()
+            kt._uploader = _KBUploadWorker(
+                core=kt._tracking,
+                analytics=kt._analytics,
+                config=kt.config,
+                supabase_client=kt._supabase_client,
+                session_id=kt._session_id,
+                developer_id=kt._developer_id,
+                developer_email=kt._developer_email,
+                interval_seconds=kt.config.session_duration_seconds,
+            )
+            kt._uploader.start()
+            # Wait until session stops
+            while not ctx.stop_event.is_set() and kt._tracking.is_tracking:
+                time.sleep(1.0)
+        except Exception as e:
+            log.error(f"KeyboardTracker runner error: {e}")
+
     def _destroy_all_trackers(self) -> None:
         for label, attr, method in [
             ("AppMonitor",        "app_monitor",        "stop"),
             ("MouseTracker",      "mouse_tracker",      "stop"),
-            ("KeyboardTracker",   "keyboard_tracker",   "stop_tracking"),
-            ("ScreenshotCapture", "screenshot_capture", "stop_capture"),
+            ("ScreenshotCapture", "screenshot_capture", "stop"),
         ]:
             obj = getattr(self, attr, None)
             if obj is not None:
@@ -482,6 +606,18 @@ class TimerTracker:
                     log.error(f"{label} stop error: {e}")
                 finally:
                     setattr(self, attr, None)
+        # KeyboardTracker: stop tracking core + uploader
+        kt = self.keyboard_tracker
+        if kt is not None:
+            try:
+                kt._tracking.stop()
+                if kt._uploader:
+                    kt._uploader.stop(flush=True)
+                log.info("KeyboardTracker stopped")
+            except Exception as e:
+                log.error(f"KeyboardTracker stop error: {e}")
+            finally:
+                self.keyboard_tracker = None
         log.info("All trackers destroyed")
 
     # =========================================================================
@@ -512,7 +648,7 @@ class TimerTracker:
             if self.keyboard_tracker:
                 session.keyboard_events = self.keyboard_tracker.get_stats().get("total_keys_pressed", 0)
             if self.screenshot_capture:
-                session.screenshots_taken = self.screenshot_capture.get_stats().get("total_captured", 0)
+                session.screenshots_taken = self.screenshot_capture.stats().get("total_captured", 0)
             self._calculate_productivity(session)
         except Exception as e:
             log.error(f"Data collection error: {e}")
@@ -540,7 +676,7 @@ class TimerTracker:
                 app_monitor_data   = self.app_monitor.get_summary()      if self.app_monitor        else None,
                 mouse_stats        = self.mouse_tracker.get_stats()       if self.mouse_tracker      else None,
                 keyboard_stats     = self.keyboard_tracker.get_stats()    if self.keyboard_tracker   else None,
-                screenshot_stats   = self.screenshot_capture.get_stats()  if self.screenshot_capture else None,
+                screenshot_stats   = self.screenshot_capture.stats()      if self.screenshot_capture else None,
                 productivity_score = session.productivity_score,
             )
         except Exception as e:

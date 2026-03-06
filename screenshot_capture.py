@@ -71,7 +71,9 @@ def _supabase_client():
         
         return None
     from supabase import create_client
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    # Ensure URL has trailing slash to avoid storage endpoint warning
+    url = SUPABASE_URL if SUPABASE_URL.endswith('/') else SUPABASE_URL + '/'
+    return create_client(url, SUPABASE_KEY)
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -200,12 +202,20 @@ class ScreenshotCapture:
         compress:     bool = True,
         quality:      int  = 85,
         max_history:  int  = 200,
+        developer_id:       Optional[str] = None,
+        developer_email:    Optional[str] = None,
+        developer_username: Optional[str] = None,
     ):
         self.interval_min = interval_min
         self.interval_max = interval_max
         self.compress     = compress
         self.quality      = quality
         self.max_history  = max_history
+
+        # Dynamic user identity — falls back to module-level .env globals
+        self._developer_id       = developer_id       or DEVELOPER_ID
+        self._developer_email    = developer_email    or DEVELOPER_EMAIL
+        self._developer_username = developer_username or DEVELOPER_USERNAME
 
         self._screenshots: List[ScreenshotInfo] = []
         self._total   = 0
@@ -352,7 +362,7 @@ class ScreenshotCapture:
             return None
 
         mime         = "image/jpeg" if info.filename.endswith(".jpg") else "image/png"
-        storage_path = f"{DEVELOPER_USERNAME}/{info.filename}"
+        storage_path = f"{self._developer_username}/{info.filename}"
 
         # ── Step 1: Storage upload ────────────────────────────────────────────
         # Gate: if this fails we return immediately — no metadata insert attempted.
@@ -375,16 +385,16 @@ class ScreenshotCapture:
             public_url = None
 
         # ── Step 3: Metadata insert (runs ONLY after confirmed upload) ────────
-        # DEVELOPER_ID was validated at startup — if None, the .env UUID is missing/invalid.
-        if DEVELOPER_ID is None:
+        # Use instance-level developer identity (dynamic per user session)
+        if self._developer_id is None:
           
             return public_url  # upload already succeeded; preserve the URL
 
         is_annotated = bool(info.annotation_text)
 
         row = {
-            "developer_id":    DEVELOPER_ID,         # uuid — validated at startup
-            "developer_email": DEVELOPER_EMAIL,       # text
+            "developer_id":    self._developer_id,    # uuid — from logged-in user
+            "developer_email": self._developer_email,  # text — from logged-in user
             "filename":        info.filename,          # text
             "storage_path":    storage_path,           # text (unique constraint)
             "public_url":      public_url,             # text | null
@@ -421,6 +431,10 @@ class ScreenshotCapture:
             "capture_active": self._running,
             "last_capture":   self._screenshots[-1].timestamp if self._screenshots else None,
         }
+
+    def get_stats(self) -> dict:
+        """Alias for stats() — ensures compatibility with dashboard calls."""
+        return self.stats()
 
     def recent(self, n: int = 5) -> List[ScreenshotInfo]:
         return self._screenshots[-n:]
