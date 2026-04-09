@@ -129,8 +129,6 @@ class DashboardWindow:
         self.timer_paused = False
         self.stop_update_thread = False
         self.update_counter = 0
-        self.screenshot_images = {}
-        self.screenshot_labels = {}
         
         # Thread safety lock for UI updates
         self.ui_lock = threading.Lock()
@@ -178,8 +176,8 @@ class DashboardWindow:
         """Setup all UI components with modern multi-panel layout"""
         self._setup_header()
         self._setup_timer_section()
-        self._setup_content_panels()
-    
+        # Statistics, live app view, and screenshot panels removed
+
     def _setup_header(self):
         """Header with user info and logout button"""
         header = ctk.CTkFrame(
@@ -311,200 +309,6 @@ class DashboardWindow:
             font=ctk.CTkFont(size=12)
         )
         self.status_label.pack(pady=(0, 15))
-    
-    def _setup_content_panels(self):
-        """Multi-panel layout: Left (apps), Center (stats), Right (screenshots)"""
-        # Main container
-        content_frame = ctk.CTkFrame(self.app, fg_color="transparent")
-        content_frame.pack(pady=10, padx=15, fill="both", expand=True)
-        
-        # LEFT PANEL: Tracked Apps
-        left_panel = self._create_panel(content_frame, "📱 Live Apps")
-        left_panel.grid(row=0, column=0, padx=(0, 7), sticky="nsew", rowspan=2)
-        self._setup_apps_panel(left_panel)
-        
-        # CENTER TOP: Statistics
-        center_panel = self._create_panel(content_frame, "📊 Statistics")
-        center_panel.grid(row=0, column=1, padx=7, sticky="nsew")
-        self._setup_stats_panel(center_panel)
-        
-        # RIGHT PANEL: Screenshots
-        right_panel = self._create_panel(content_frame, "📸 Screenshots")
-        right_panel.grid(row=0, column=2, padx=(7, 0), sticky="nsew", rowspan=2)
-        self._setup_screenshots_panel(right_panel)
-        
-        # CENTER BOTTOM: Productivity
-        prod_panel = self._create_panel(content_frame, "🎯 Session Progress")
-        prod_panel.grid(row=1, column=1, padx=7, pady=(7, 0), sticky="nsew")
-        self._setup_productivity_panel(prod_panel)
-        
-        # Configure grid
-        content_frame.columnconfigure(0, weight=1)
-        content_frame.columnconfigure(1, weight=1)
-        content_frame.columnconfigure(2, weight=1)
-        content_frame.rowconfigure(0, weight=2)
-        content_frame.rowconfigure(1, weight=1)
-    
-    def _create_panel(self, parent, title):
-        """Create a styled panel with rounded corners and title"""
-        panel = ctk.CTkFrame(
-            parent,
-            fg_color=self.colors["bg_secondary"],
-            corner_radius=12
-        )
-        
-        # Title bar
-        title_bar = ctk.CTkFrame(
-            panel,
-            fg_color=self.colors["bg_tertiary"],
-            corner_radius=10
-        )
-        title_bar.pack(pady=10, padx=10, fill="x")
-        
-        ctk.CTkLabel(
-            title_bar,
-            text=title,
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color=self.colors["text_primary"]
-        ).pack(pady=10, padx=10)
-        
-        # Content frame
-        content = ctk.CTkFrame(panel, fg_color="transparent")
-        content.pack(pady=10, padx=10, fill="both", expand=True)
-        
-        panel._content_frame = content
-        return panel
-    
-    def _setup_apps_panel(self, panel):
-        """Left panel: Currently tracked apps with live duration"""
-        content = panel._content_frame
-        
-        # Scrollable frame for apps
-        self.apps_scrollable = ctk.CTkScrollableFrame(
-            content,
-            fg_color="transparent",
-            corner_radius=8
-        )
-        self.apps_scrollable.pack(fill="both", expand=True)
-        
-        self.apps_display_labels = []
-        self.apps_label = ctk.CTkLabel(
-            self.apps_scrollable,
-            text="Waiting for apps...",
-            text_color=self.colors["text_muted"],
-            font=ctk.CTkFont(size=12)
-        )
-        self.apps_label.pack(pady=20)
-    
-    def _setup_stats_panel(self, panel):
-        """Center top panel: Key statistics"""
-        content = panel._content_frame
-        
-        self.stat_labels = {}
-        stats = [
-            ("Mouse Events", "0", self.colors["accent_blue"]),
-            ("Keyboard Events", "0", self.colors["accent_purple"]),
-            ("Apps Traced", "0", self.colors["accent_green"])
-        ]
-        
-        for label_text, value, color in stats:
-            stat_card = ctk.CTkFrame(
-                content,
-                fg_color=self.colors["bg_tertiary"],
-                corner_radius=8
-            )
-            stat_card.pack(fill="x", pady=8)
-            
-            ctk.CTkLabel(
-                stat_card,
-                text=label_text,
-                font=ctk.CTkFont(size=11),
-                text_color=self.colors["text_secondary"]
-            ).pack(anchor="w", padx=12, pady=(8, 2))
-            
-            self.stat_labels[label_text] = ctk.CTkLabel(
-                stat_card,
-                text=value,
-                font=ctk.CTkFont(size=24, weight="bold"),
-                text_color=color
-            )
-            self.stat_labels[label_text].pack(anchor="w", padx=12, pady=(2, 8))
-    
-    def _setup_screenshots_panel(self, panel):
-        """Right panel: Screenshot thumbnails grid"""
-        content = panel._content_frame
-        
-        # Scrollable frame for screenshots
-        self.screenshots_scrollable = ctk.CTkScrollableFrame(
-            content,
-            fg_color="transparent",
-            corner_radius=8
-        )
-        self.screenshots_scrollable.pack(fill="both", expand=True)
-        
-        # Grid for thumbnails
-        self.screenshots_grid = ctk.CTkFrame(self.screenshots_scrollable, fg_color="transparent")
-        self.screenshots_grid.pack(fill="both", expand=True)
-        
-        # Placeholder
-        placeholder = ctk.CTkLabel(
-            self.screenshots_grid,
-            text="📸 Screenshots\nwill appear here",
-            text_color=self.colors["text_muted"],
-            font=ctk.CTkFont(size=12),
-            justify="center"
-        )
-        placeholder.pack(pady=40, expand=True)
-    
-    def _setup_productivity_panel(self, panel):
-        """Bottom center panel: Productivity score and stats"""
-        content = panel._content_frame
-        
-        # Productivity Score
-        prod_card = ctk.CTkFrame(
-            content,
-            fg_color=self.colors["bg_tertiary"],
-            corner_radius=8
-        )
-        prod_card.pack(fill="x", pady=8)
-        
-        ctk.CTkLabel(
-            prod_card,
-            text="Productivity Score",
-            font=ctk.CTkFont(size=11),
-            text_color=self.colors["text_secondary"]
-        ).pack(anchor="w", padx=12, pady=(8, 2))
-        
-        self.stat_labels["Productivity"] = ctk.CTkLabel(
-            prod_card,
-            text="0%",
-            font=ctk.CTkFont(size=28, weight="bold"),
-            text_color=self.colors["accent_green"]
-        )
-        self.stat_labels["Productivity"].pack(anchor="w", padx=12, pady=(2, 8))
-        
-        # Screenshots count
-        ss_card = ctk.CTkFrame(
-            content,
-            fg_color=self.colors["bg_tertiary"],
-            corner_radius=8
-        )
-        ss_card.pack(fill="x", pady=8)
-        
-        ctk.CTkLabel(
-            ss_card,
-            text="Screenshots Captured",
-            font=ctk.CTkFont(size=11),
-            text_color=self.colors["text_secondary"]
-        ).pack(anchor="w", padx=12, pady=(8, 2))
-        
-        self.stat_labels["Screenshots"] = ctk.CTkLabel(
-            ss_card,
-            text="0",
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color=self.colors["accent_orange"]
-        )
-        self.stat_labels["Screenshots"].pack(anchor="w", padx=12, pady=(2, 8))
     
     def start_timer(self):
         """Start timer with INSTANT UI feedback - Non-blocking"""
@@ -796,28 +600,6 @@ class DashboardWindow:
                                     )
                                     self.stop_btn.configure(state="disabled")
                                     self.timer_label.configure(text="00:00:00")
-                                    
-                                    # Update stats
-                                    self.stat_labels["Mouse Events"].configure(text=str(session.mouse_events))
-                                    self.stat_labels["Keyboard Events"].configure(text=str(session.keyboard_events))
-                                    self.stat_labels["Apps Traced"].configure(text=str(session.app_switches))
-                                    self.stat_labels["Screenshots"].configure(text=str(session.screenshots_taken))
-                                    self.stat_labels["Productivity"].configure(text=f"{session.productivity_score:.1f}%")
-                                    
-                                    # Show final apps summary
-                                    if hasattr(session, 'apps_used') and session.apps_used != "[]":
-                                        try:
-                                            apps_list = ast.literal_eval(session.apps_used)
-                                            if apps_list:
-                                                apps_text = "📱 Apps used:\n"
-                                                for i, app in enumerate(apps_list[:5]):
-                                                    apps_text += f"• {app}\n"
-                                                if len(apps_list) > 5:
-                                                    apps_text += f"• ... and {len(apps_list) - 5} more"
-                                                self.apps_label.configure(text=apps_text)
-                                        except:
-                                            pass
-                                    
                                     # Show final time
                                     total_seconds = session.total_duration
                                     hours = int(total_seconds // 3600)
@@ -896,114 +678,12 @@ class DashboardWindow:
             traceback.print_exc()
     
     def update_apps_display(self):
-        """Update the currently tracked apps display in real-time"""
-        try:
-            if self.timer_running and hasattr(self.timer, 'app_monitor') and self.timer.app_monitor:
-                current_apps = self.timer.app_monitor.live_apps()
-                
-                if current_apps:
-                    apps_text = ""
-                    for i, app in enumerate(current_apps[:5]):
-                        app_name = app['app_name'].replace('.exe', '').replace('.EXE', '')
-                        apps_text += f"🔹 {app_name[:25]}\n   ⏱️ {app['duration_min']:.1f} min\n\n"
-                    
-                    if len(current_apps) > 5:
-                        apps_text += f"... and {len(current_apps) - 5} more apps"
-                    
-                    # Schedule UI update on main thread with safety check
-                    def safe_update():
-                        try:
-                            if self.app.winfo_exists():
-                                self.apps_label.configure(text=apps_text)
-                        except:
-                            pass
-                    
-                    if self.app.winfo_exists():
-                        self.app.after(0, safe_update)
-                else:
-                    def safe_update():
-                        try:
-                            if self.app.winfo_exists():
-                                self.apps_label.configure(text="Scanning for apps...")
-                        except:
-                            pass
-                    
-                    if self.app.winfo_exists():
-                        self.app.after(0, safe_update)
-            
-        except Exception as e:
-            print(f"Apps display error: {e}")
+        """Previously updated live app view (UI removed). No-op."""
+        return
     
     def update_real_time_stats(self):
-        """Update live statistics during tracking"""
-        try:
-            if self.timer_running:
-                # Mouse events
-                if hasattr(self.timer, 'mouse_tracker') and self.timer.mouse_tracker:
-                    mouse_stats = self.timer.mouse_tracker.get_stats()
-                    if 'total_events' in mouse_stats:
-                        def safe_update():
-                            try:
-                                if self.app.winfo_exists():
-                                    self.stat_labels["Mouse Events"].configure(
-                                        text=str(mouse_stats['total_events'])
-                                    )
-                            except:
-                                pass
-                        
-                        if self.app.winfo_exists():
-                            self.app.after(0, safe_update)
-                
-                # Keyboard events
-                if hasattr(self.timer, 'keyboard_tracker') and self.timer.keyboard_tracker:
-                    keyboard_stats = self.timer.keyboard_tracker.get_stats()
-                    if 'total_keys_pressed' in keyboard_stats:
-                        def safe_update():
-                            try:
-                                if self.app.winfo_exists():
-                                    self.stat_labels["Keyboard Events"].configure(
-                                        text=str(keyboard_stats['total_keys_pressed'])
-                                    )
-                            except:
-                                pass
-                        
-                        if self.app.winfo_exists():
-                            self.app.after(0, safe_update)
-                
-                # Screenshots
-                if hasattr(self.timer, 'screenshot_capture') and self.timer.screenshot_capture:
-                    screenshot_stats = self.timer.screenshot_capture.stats()
-                    if 'total_captured' in screenshot_stats:
-                        def safe_update():
-                            try:
-                                if self.app.winfo_exists():
-                                    self.stat_labels["Screenshots"].configure(
-                                        text=str(screenshot_stats['total_captured'])
-                                    )
-                            except:
-                                pass
-                        
-                        if self.app.winfo_exists():
-                            self.app.after(0, safe_update)
-                
-                # Apps tracked
-                if hasattr(self.timer, 'app_monitor') and self.timer.app_monitor:
-                    app_summary = self.timer.app_monitor.get_summary()
-                    if 'total_sessions' in app_summary:
-                        def safe_update():
-                            try:
-                                if self.app.winfo_exists():
-                                    self.stat_labels["Apps Traced"].configure(
-                                        text=str(app_summary['total_sessions'])
-                                    )
-                            except:
-                                pass
-                        
-                        if self.app.winfo_exists():
-                            self.app.after(0, safe_update)
-                    
-        except Exception as e:
-            print(f"Stats update error: {e}")
+        """Previously updated on-screen statistics (UI removed). No-op."""
+        return
     
     def start_timer_update(self):
         """Start timer updates using Tkinter's after() - thread-safe"""
@@ -1021,15 +701,6 @@ class DashboardWindow:
                 # Update every 100ms
                 status = self.timer.get_current_time()
                 self.timer_label.configure(text=status["formatted_time"])
-                
-                # Update apps display every 3 seconds
-                if self.update_counter % 30 == 0:
-                    self.update_apps_display()
-                
-                # Update stats every 5 seconds
-                if self.update_counter % 50 == 0:
-                    self.update_real_time_stats()
-                
                 self.update_counter += 1
                 
         except Exception as e:
