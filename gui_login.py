@@ -4,6 +4,8 @@ Features: Multi-panel layout, professional styling, real-time updates
 """
 
 import sys
+import os
+import json
 import customtkinter as ctk
 from tkinter import messagebox, BooleanVar
 import ast
@@ -99,7 +101,7 @@ class LoginWindow:
         )
         register_btn.pack(side="left")
 
-        # Attempt to auto-fill saved email if Remember Me was used (Supabase-backed)
+        # Attempt to auto-fill saved credentials if Remember Me was used
         self._load_saved_credentials()
     
     def login(self):
@@ -114,10 +116,12 @@ class LoginWindow:
         try:
             success, message, user = self.auth.login(email, password)
             if success and user:
-                # Persist Remember Me preference via Supabase on successful login
+                # Persist Remember Me preference locally and via Supabase
+                self._save_credentials(email, password)
                 try:
                     self.auth.save_remember_me(email, self.remember_var.get())
                 except Exception:
+                    # Never break login flow on preference save errors
                     pass
                 # Switch to dashboard
                 self.app.withdraw()
@@ -140,7 +144,34 @@ class LoginWindow:
         self.app.mainloop()
 
     def _load_saved_credentials(self) -> None:
-        """Auto-fill email from Supabase-backed Remember Me preference."""
+        """Auto-fill email/password based on Remember Me settings.
+
+        Preference order:
+        1) Local per-device store (email + password) if Remember Me was used.
+        2) Supabase-backed remembered email (no password) as a cross-device hint.
+        """
+        # 1) Local JSON store on this device
+        try:
+            path = self._credentials_path()
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                email = data.get("email") or ""
+                password = data.get("password") or ""
+                if email:
+                    self.email_input.delete(0, "end")
+                    self.email_input.insert(0, email)
+                if password:
+                    self.pass_input.delete(0, "end")
+                    self.pass_input.insert(0, password)
+                if email or password:
+                    self.remember_var.set(True)
+                    return
+        except Exception:
+            # Ignore local storage issues and fall back to Supabase
+            pass
+
+        # 2) Supabase-backed email hint (no password)
         try:
             remembered = self.auth.get_remembered_email()
             if remembered:
@@ -150,6 +181,35 @@ class LoginWindow:
         except Exception:
             # Never break UI if Supabase lookup fails
             return
+
+    def _credentials_path(self) -> str:
+        """Return path to local file where Remember Me credentials are stored."""
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base_dir, ".remember_me.json")
+
+    def _save_credentials(self, email: str, password: str) -> None:
+        """Save or clear credentials based on Remember Me checkbox state."""
+        path = self._credentials_path()
+        try:
+            if self.remember_var.get():
+                data = {"email": email, "password": password}
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+            else:
+                if os.path.exists(path):
+                    os.remove(path)
+        except Exception:
+            # Do not break login flow on persistence errors
+            return
+
+    def refresh_credentials_after_logout(self) -> None:
+        """Reset and re-apply saved credentials when returning from dashboard."""
+        # Clear current fields
+        self.email_input.delete(0, "end")
+        self.pass_input.delete(0, "end")
+        self.remember_var.set(False)
+        # Re-load from local/Supabase preferences
+        self._load_saved_credentials()
 
 class DashboardWindow:
     def __init__(self, user, auth, login_window):
@@ -162,6 +222,7 @@ class DashboardWindow:
         self.timer_paused = False
         self.stop_update_thread = False
         self.update_counter = 0
+        self._timer_after_id = None
         
         # Thread safety lock for UI updates
         self.ui_lock = threading.Lock()
@@ -172,8 +233,9 @@ class DashboardWindow:
             user_email=user.email
         )
         
-        # Create main window
-        self.app = ctk.CTk()
+        # Create main window as a child of the login root to avoid
+        # multiple Tk root instances (prevents Tcl "invalid command" errors)
+        self.app = ctk.CTkToplevel(self.login_window.app)
         self.app.title("Developer Productivity Tracker")
         self.app.geometry("1400x900")
         self.app.minsize(1000, 700)
@@ -741,11 +803,19 @@ class DashboardWindow:
         
         # Schedule next update only if window still exists
         if self.app.winfo_exists():
-            self.app.after(100, self._schedule_timer_update)
+            # Keep handle so we can cancel on logout/close
+            self._timer_after_id = self.app.after(100, self._schedule_timer_update)
     
     def logout(self):
         """Clean logout with thread cleanup"""
         self.stop_update_thread = True
+        # Cancel any pending timer callbacks before destroying window
+        try:
+            if self._timer_after_id is not None and self.app.winfo_exists():
+                self.app.after_cancel(self._timer_after_id)
+        except Exception:
+            pass
+        self._timer_after_id = None
         
         if self.timer_running:
             if messagebox.askyesno("Logout", "Stop timer and logout?"):
@@ -767,11 +837,23 @@ class DashboardWindow:
         except Exception as e:
             print(f"Error destroying window: {e}")
         
+        # When returning to login, refresh fields based on Remember Me
+        try:
+            self.login_window.refresh_credentials_after_logout()
+        except Exception:
+            pass
         self.login_window.show()
     
     def on_closing(self):
         """Window close handler - safe cleanup with daemon threads"""
         self.stop_update_thread = True
+        # Cancel any pending timer callbacks before destroying window
+        try:
+            if self._timer_after_id is not None and self.app.winfo_exists():
+                self.app.after_cancel(self._timer_after_id)
+        except Exception:
+            pass
+        self._timer_after_id = None
         
         if self.timer_running:
             if messagebox.askyesno("Exit", "Stop timer and exit?"):
