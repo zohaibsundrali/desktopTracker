@@ -132,6 +132,54 @@ class AuthManager:
         """Get currently logged in user"""
         return self.current_user
 
+    # ------------------------------------------------------------------
+    # Remember Me helpers (Supabase-backed, email only)
+    # ------------------------------------------------------------------
+
+    def save_remember_me(self, email: str, remember: bool) -> None:
+        """Persist or clear Remember Me preference for the given email.
+
+        This assumes a Supabase table `login_preferences` with at least:
+            email        text PRIMARY KEY
+            remember_me  boolean
+            updated_at   timestamptz default now()
+
+        All errors are silently ignored so login flow is never broken.
+        """
+        try:
+            payload = {
+                "email": email,
+                "remember_me": bool(remember),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+            (
+                self.supabase
+                .table("login_preferences")
+                .upsert(payload, on_conflict="email")
+                .execute()
+            )
+        except Exception:
+            # Non-fatal: Remember Me should never break auth
+            return
+
+    def get_remembered_email(self) -> Optional[str]:
+        """Return the most recently remembered email across devices, if any."""
+        try:
+            result = (
+                self.supabase
+                .table("login_preferences")
+                .select("email, remember_me, updated_at")
+                .eq("remember_me", True)
+                .order("updated_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                return result.data[0].get("email")
+            return None
+        except Exception:
+            return None
+
 # Quick test if run directly
 if __name__ == "__main__":
     print("🔐 Auth Manager - Ready")

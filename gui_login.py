@@ -4,8 +4,6 @@ Features: Multi-panel layout, professional styling, real-time updates
 """
 
 import sys
-import os
-import json
 import customtkinter as ctk
 from tkinter import messagebox, BooleanVar
 import ast
@@ -67,7 +65,7 @@ class LoginWindow:
         remember_frame.pack(fill="x", pady=(0, 20))
         remember_checkbox = ctk.CTkCheckBox(
             remember_frame,
-            text="Remember me on this device",
+            text="Remember me",
             variable=self.remember_var,
             onvalue=True,
             offvalue=False
@@ -101,7 +99,7 @@ class LoginWindow:
         )
         register_btn.pack(side="left")
 
-        # Attempt to auto-fill saved credentials if Remember Me was used
+        # Attempt to auto-fill saved email if Remember Me was used (Supabase-backed)
         self._load_saved_credentials()
     
     def login(self):
@@ -116,8 +114,11 @@ class LoginWindow:
         try:
             success, message, user = self.auth.login(email, password)
             if success and user:
-                # Persist credentials only on successful login
-                self._save_credentials(email, password)
+                # Persist Remember Me preference via Supabase on successful login
+                try:
+                    self.auth.save_remember_me(email, self.remember_var.get())
+                except Exception:
+                    pass
                 # Switch to dashboard
                 self.app.withdraw()
                 self.dashboard = DashboardWindow(user, self.auth, self)
@@ -138,46 +139,16 @@ class LoginWindow:
     def run(self):
         self.app.mainloop()
 
-    def _credentials_path(self) -> str:
-        """Return path to local file where Remember Me credentials are stored."""
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(base_dir, ".remember_me.json")
-
     def _load_saved_credentials(self) -> None:
-        """Load saved email/password if Remember Me was previously used."""
+        """Auto-fill email from Supabase-backed Remember Me preference."""
         try:
-            path = self._credentials_path()
-            if not os.path.exists(path):
-                return
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            email = data.get("email") or ""
-            password = data.get("password") or ""
-            if email:
+            remembered = self.auth.get_remembered_email()
+            if remembered:
                 self.email_input.delete(0, "end")
-                self.email_input.insert(0, email)
-            if password:
-                self.pass_input.delete(0, "end")
-                self.pass_input.insert(0, password)
-            if email or password:
+                self.email_input.insert(0, remembered)
                 self.remember_var.set(True)
         except Exception:
-            # Fail silently if file is malformed or unreadable
-            return
-
-    def _save_credentials(self, email: str, password: str) -> None:
-        """Save or clear credentials based on Remember Me checkbox state."""
-        path = self._credentials_path()
-        try:
-            if self.remember_var.get():
-                data = {"email": email, "password": password}
-                with open(path, "w", encoding="utf-8") as f:
-                    json.dump(data, f)
-            else:
-                if os.path.exists(path):
-                    os.remove(path)
-        except Exception:
-            # Do not break login flow on persistence errors
+            # Never break UI if Supabase lookup fails
             return
 
 class DashboardWindow:
