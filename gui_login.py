@@ -83,16 +83,7 @@ class RadialTimerWidget(ctk.CTkFrame):
             font=ctk.CTkFont(size=44, weight="bold"),
             text_color=Colors.ACCENT_BLUE
         )
-        self.time_label.place(relx=0.5, rely=0.45, anchor="center")
-
-        # Goal hint below time
-        self.goal_label = ctk.CTkLabel(
-            self.canvas,
-            text=f"Daily goal: {daily_goal_minutes // 60}h",
-            font=ctk.CTkFont(size=11),
-            text_color=Colors.TEXT_MUTED
-        )
-        self.goal_label.place(relx=0.5, rely=0.65, anchor="center")
+        self.time_label.place(relx=0.5, rely=0.5, anchor="center")
 
         self.progress_arc = None
         self.pulse_animation_id = None
@@ -168,169 +159,6 @@ class RadialTimerWidget(ctk.CTkFrame):
             self.progress_arc = None
 
 
-class SparklineWidget(ctk.CTkFrame):
-    """
-    A tiny canvas that draws a trend line for a metric (WPM, mouse events).
-    Maintains a rolling window of data points.
-    """
-    def __init__(self, master, width=80, height=30, max_points=30, **kwargs):
-        super().__init__(master, fg_color="transparent", **kwargs)
-        self.width = width
-        self.height = height
-        self.max_points = max_points
-        self.data = deque(maxlen=max_points)
-
-        self.canvas = tk.Canvas(
-            self,
-            width=width,
-            height=height,
-            bg=Colors.BG_TERTIARY,
-            highlightthickness=0
-        )
-        self.canvas.pack()
-
-    def add_value(self, value: float) -> None:
-        """Add a new data point and redraw the sparkline."""
-        self.data.append(value)
-        self._redraw()
-
-    def _redraw(self) -> None:
-        """Draw the sparkline as a polyline."""
-        self.canvas.delete("all")
-        if len(self.data) < 2:
-            return
-
-        points = list(self.data)
-        min_val = min(points)
-        max_val = max(points)
-        if max_val == min_val:
-            # Flat line
-            y_scale = 0
-        else:
-            y_scale = (self.height - 4) / (max_val - min_val)
-
-        x_step = self.width / (len(points) - 1)
-        coords = []
-        for i, val in enumerate(points):
-            x = i * x_step
-            y = self.height - 2 - (val - min_val) * y_scale
-            coords.extend([x, y])
-
-        if len(coords) >= 4:
-            # Determine colour based on trend
-            if points[-1] > points[0]:
-                color = Colors.SPARKLINE_UP
-            else:
-                color = Colors.SPARKLINE_DOWN
-            self.canvas.create_line(coords, fill=color, width=1.5, smooth=True)
-
-
-class AppSwimlaneWidget(ctk.CTkFrame):
-    """
-    High‑performance canvas that draws application usage blocks.
-    Avoids creating dozens of CTkFrames and updates smoothly.
-    """
-    def __init__(self, master, **kwargs):
-        super().__init__(master, fg_color="transparent", **kwargs)
-        self.canvas = tk.Canvas(
-            self,
-            bg=Colors.BG_SECONDARY,
-            highlightthickness=0
-        )
-        self.canvas.pack(fill="both", expand=True, padx=10, pady=10)
-        self.bind("<Configure>", self._on_resize)
-        self.apps_data: List[Dict[str, Any]] = []
-
-    def _on_resize(self, event):
-        self.update_display(self.apps_data)
-
-    def update_display(self, apps: List[Dict[str, Any]]) -> None:
-        """Redraw the swimlane with new app data."""
-        self.apps_data = apps
-        self.canvas.delete("all")
-        if not apps:
-            self.canvas.create_text(
-                20, 20, anchor="nw",
-                text="No active apps detected.",
-                fill=Colors.TEXT_MUTED,
-                font=("Segoe UI", 11)
-            )
-            return
-
-        width = self.canvas.winfo_width()
-        if width <= 1:
-            width = 400  # fallback
-
-        y_offset = 12
-        bar_height = 32
-        max_duration = max((a.get("duration_min", 0) for a in apps), default=1)
-        if max_duration == 0:
-            max_duration = 1
-
-        for app in apps[:6]:  # Limit to top 6
-            name = app.get("app_name", "Unknown")
-            emoji = app.get("emoji", "📱")
-            category = app.get("category", "OTHER")
-            duration = app.get("duration_min", 0.0)
-            title = app.get("title", "")
-
-            # Proportional width (minimum 80px for readability)
-            bar_width = max(80, (duration / max_duration) * (width - 100))
-            if bar_width > width - 60:
-                bar_width = width - 60
-
-            x1, y1 = 20, y_offset
-            x2, y2 = x1 + bar_width, y_offset + bar_height
-
-            # Rounded rectangle
-            self.canvas.create_rectangle(
-                x1, y1, x2, y2,
-                fill=Colors.BG_TERTIARY,
-                outline=Colors.GLASS_BORDER,
-                width=1
-            )
-            # App name + emoji
-            self.canvas.create_text(
-                x1 + 10, y1 + bar_height/2,
-                anchor="w",
-                text=f"{emoji} {name}",
-                fill=Colors.TEXT_PRIMARY,
-                font=("Segoe UI", 11, "bold")
-            )
-            # Duration label
-            self.canvas.create_text(
-                x2 - 10, y1 + bar_height/2,
-                anchor="e",
-                text=f"{duration:.1f}m",
-                fill=Colors.TEXT_SECONDARY,
-                font=("Segoe UI", 10)
-            )
-            # Category badge (small)
-            badge_x = x2 + 8
-            if badge_x < width - 60:
-                self.canvas.create_text(
-                    badge_x, y1 + bar_height/2,
-                    anchor="w",
-                    text=category,
-                    fill=Colors.TEXT_MUTED,
-                    font=("Segoe UI", 9)
-                )
-
-            # Window title if available
-            if title:
-                y_offset += bar_height + 4
-                self.canvas.create_text(
-                    x1 + 20, y_offset,
-                    anchor="nw",
-                    text=f"   {title[:60]}{'...' if len(title)>60 else ''}",
-                    fill=Colors.TEXT_MUTED,
-                    font=("Segoe UI", 9)
-                )
-                y_offset += 16
-            else:
-                y_offset += bar_height + 8
-
-
 # ----------------------------------------------------------------------
 #  Login Window (Refined)
 # ----------------------------------------------------------------------
@@ -338,8 +166,8 @@ class LoginWindow:
     def __init__(self):
         self.app = ctk.CTk()
         self.app.title("Developer Tracker – Sign In")
-        self.app.geometry("960x600")
-        self.app.minsize(860, 520)
+        self.app.geometry("800x500")
+        self.app.minsize(700, 450)
         ctk.set_appearance_mode("dark")
 
         self.auth = AuthManager()
@@ -603,38 +431,31 @@ class DashboardWindow:
         self._timer_after_id = None
         self.ui_lock = threading.Lock()
 
-        # Data buffers for sparklines
-        self.wpm_buffer = deque(maxlen=30)
-        self.mouse_buffer = deque(maxlen=30)
-
         self.timer = TimerTracker(user_id=user.id, user_email=user.email)
 
         # Create Toplevel
         self.app = ctk.CTkToplevel(self.login_window.app)
         self.app.title("Developer Productivity Tracker")
-        self.app.geometry("1400x900")
-        self.app.minsize(1100, 700)
+        self.app.geometry("500x550")
+        self.app.minsize(450, 450)
         self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
         ctk.set_appearance_mode("dark")
         self.app.configure(fg_color=Colors.BG_PRIMARY)
 
         self.setup_ui()
         self.start_timer_update()
-        self._update_greeting()
 
     def setup_ui(self):
         # Header
         self._setup_header()
 
-        # Main content: two columns (left: timer + metrics, right: apps + insights)
+        # Main content: single column (left: timer)
         self.content = ctk.CTkFrame(self.app, fg_color="transparent")
         self.content.pack(padx=20, pady=(0, 20), fill="both", expand=True)
         self.content.grid_rowconfigure(0, weight=1)
-        self.content.grid_columnconfigure(0, weight=2)
-        self.content.grid_columnconfigure(1, weight=3)
+        self.content.grid_columnconfigure(0, weight=1)
 
         self._setup_left_column()
-        self._setup_right_column()
 
     def _setup_header(self):
         header = ctk.CTkFrame(
@@ -653,13 +474,6 @@ class DashboardWindow:
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=Colors.TEXT_PRIMARY
         ).pack(anchor="w")
-
-        self.greeting_label = ctk.CTkLabel(
-            user_container, text="",
-            font=ctk.CTkFont(size=11),
-            text_color=Colors.TEXT_SECONDARY
-        )
-        self.greeting_label.pack(anchor="w", pady=(5, 0))
 
         # Logout
         logout_btn = ctk.CTkButton(
@@ -716,101 +530,6 @@ class DashboardWindow:
             font=ctk.CTkFont(size=12)
         )
         self.status_label.pack(pady=(0, 12))
-
-        # Focus Metrics with Sparklines
-        metrics_frame = ctk.CTkFrame(left, fg_color=Colors.BG_SECONDARY, corner_radius=16)
-        metrics_frame.pack(fill="both", expand=True)
-
-        header = ctk.CTkLabel(
-            metrics_frame, text="Focus Metrics", font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=Colors.TEXT_SECONDARY
-        )
-        header.pack(anchor="w", padx=20, pady=(16, 8))
-
-        # Four metric rows
-        self.metric_labels = {}
-        self.sparklines = {}
-
-        metrics = [
-            ("⌨️ WPM", "wpm", "wpm_spark"),
-            ("📊 Typing Score", "kb_score", None),
-            ("🖱️ Mouse Events", "mouse_events", "mouse_spark"),
-            ("📸 Screenshots", "shots", None)
-        ]
-
-        for i, (label, key, spark_key) in enumerate(metrics):
-            row = ctk.CTkFrame(metrics_frame, fg_color="transparent")
-            row.pack(fill="x", padx=16, pady=6)
-
-            ctk.CTkLabel(row, text=label, width=100, anchor="w",
-                         font=ctk.CTkFont(size=12), text_color=Colors.TEXT_MUTED).pack(side="left")
-
-            value_label = ctk.CTkLabel(row, text="–", width=80, anchor="e",
-                                       font=ctk.CTkFont(size=14, weight="bold"),
-                                       text_color=Colors.ACCENT_BLUE)
-            value_label.pack(side="left", padx=(0, 10))
-            self.metric_labels[key] = value_label
-
-            if spark_key:
-                spark = SparklineWidget(row, width=100, height=30)
-                spark.pack(side="left", padx=(0, 10))
-                self.sparklines[spark_key] = spark
-
-            # Fill remaining space
-            ctk.CTkFrame(row, fg_color="transparent").pack(side="left", expand=True)
-
-    def _setup_right_column(self):
-        right = ctk.CTkFrame(self.content, fg_color="transparent")
-        right.grid(row=0, column=1, sticky="nsew", padx=(12, 0))
-        right.grid_rowconfigure(0, weight=3)
-        right.grid_rowconfigure(1, weight=2)
-
-        # Live Apps Swimlane
-        apps_frame = ctk.CTkFrame(right, fg_color=Colors.BG_SECONDARY, corner_radius=16)
-        apps_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 12))
-        apps_frame.grid_rowconfigure(1, weight=1)
-        apps_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            apps_frame, text="Active Applications", font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=Colors.TEXT_SECONDARY
-        ).grid(row=0, column=0, sticky="w", padx=20, pady=(16, 8))
-
-        self.app_swimlane = AppSwimlaneWidget(apps_frame)
-        self.app_swimlane.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 16))
-
-        # Session Insights
-        insights_frame = ctk.CTkFrame(right, fg_color=Colors.BG_SECONDARY, corner_radius=16)
-        insights_frame.grid(row=1, column=0, sticky="nsew")
-        insights_frame.grid_rowconfigure(1, weight=1)
-        insights_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            insights_frame, text="Session Insights", font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=Colors.TEXT_SECONDARY
-        ).grid(row=0, column=0, sticky="w", padx=20, pady=(16, 8))
-
-        self.insights_textbox = ctk.CTkTextbox(
-            insights_frame, height=140, activate_scrollbars=False,
-            fg_color=Colors.BG_TERTIARY, text_color=Colors.TEXT_PRIMARY,
-            font=ctk.CTkFont(size=11), wrap="word"
-        )
-        self.insights_textbox.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
-        self.insights_textbox.insert("1.0", "Complete a session to see a detailed summary.")
-        self.insights_textbox.configure(state="disabled")
-
-    def _update_greeting(self):
-        hour = datetime.now().hour
-        if hour < 12:
-            greeting = "Good morning"
-            tip = "Prime time for deep work."
-        elif hour < 17:
-            greeting = "Good afternoon"
-            tip = "Stay hydrated – short breaks boost focus."
-        else:
-            greeting = "Good evening"
-            tip = "Plan tomorrow's priorities."
-        self.greeting_label.configure(text=f"{greeting} • {tip}")
 
     # ------------------------------------------------------------------
     #  Timer Control (Thread‑Safe, Non‑Blocking)
@@ -951,7 +670,6 @@ class DashboardWindow:
         self.stop_btn.configure(state="disabled")
         self.radial_timer.reset()
         self.status_label.configure(text=f"✓ Session complete: {time_str}", text_color=Colors.ACCENT_GREEN)
-        self._update_session_insights(session)
         messagebox.showinfo("Session Completed",
                             f"✅ Timer stopped\n⏱️  Total: {time_str}\n"
                             f"📊 Productivity: {session.productivity_score:.1f}%\n"
@@ -980,57 +698,9 @@ class DashboardWindow:
                 self.radial_timer.update_progress(elapsed)
 
                 self.update_counter += 1
-                if self.update_counter % 3 == 0:
-                    self._refresh_metrics()
-                if self.update_counter % 10 == 0:
-                    self._refresh_apps()
         except Exception as e:
             print(f"Update error: {e}")
         self._timer_after_id = self.app.after(100, self._schedule_timer_update)
-
-    def _refresh_metrics(self):
-        try:
-            kb_stats = self.timer.keyboard_tracker.get_stats() if self.timer.keyboard_tracker else {}
-            mouse_stats = self.timer.mouse_tracker.get_stats() if self.timer.mouse_tracker else {}
-            shots = self.timer.screenshot_capture.stats().get("total_captured", 0) if self.timer.screenshot_capture else 0
-
-            wpm = kb_stats.get("words_per_minute", 0.0)
-            kb_score = kb_stats.get("activity_score", 0.0)
-            mouse_events = mouse_stats.get("total_events", 0)
-
-            self.metric_labels["wpm"].configure(text=f"{wpm:.1f}")
-            self.metric_labels["kb_score"].configure(text=f"{kb_score:.1f}/100")
-            self.metric_labels["mouse_events"].configure(text=str(mouse_events))
-            self.metric_labels["shots"].configure(text=str(shots))
-
-            # Update sparklines
-            self.wpm_buffer.append(wpm)
-            self.mouse_buffer.append(mouse_events)
-            if "wpm_spark" in self.sparklines:
-                self.sparklines["wpm_spark"].add_value(wpm)
-            if "mouse_spark" in self.sparklines:
-                self.sparklines["mouse_spark"].add_value(mouse_events)
-        except Exception as e:
-            print(f"Metrics error: {e}")
-
-    def _refresh_apps(self):
-        try:
-            apps = self.timer.get_current_apps() or []
-            self.app_swimlane.update_display(apps)
-        except Exception as e:
-            print(f"Apps error: {e}")
-
-    def _update_session_insights(self, session):
-        try:
-            report = self.timer.get_session_report()
-            if report:
-                summary = report.generate_compact_report()
-                self.insights_textbox.configure(state="normal")
-                self.insights_textbox.delete("1.0", "end")
-                self.insights_textbox.insert("1.0", summary.strip())
-                self.insights_textbox.configure(state="disabled")
-        except Exception as e:
-            print(f"Insights error: {e}")
 
     # ------------------------------------------------------------------
     #  Cleanup
