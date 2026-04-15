@@ -13,6 +13,7 @@ What changed from previous version:
 import time
 import threading
 import logging
+import json
 from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -426,6 +427,7 @@ class TimerTracker:
     def _upload_periodic_stats(self, session_id: str) -> None:
         """Gather current stats from all trackers and insert one row into Supabase."""
         elapsed = self.instant_timer.get_elapsed()
+        now_iso = datetime.now().isoformat()
 
         mouse_events    = 0
         keyboard_events = 0
@@ -456,11 +458,16 @@ class TimerTracker:
             except Exception:
                 pass
 
+        # For periodic rows we also set end_time to "now" so that
+        # the column is never NULL in productivity_sessions. Final
+        # completed rows still get the precise stop timestamp from
+        # _save_session_to_db.
         row = {
             "session_id":       session_id,
             "user_id":          self.user_id,
             "user_email":       self.user_email,
-            "start_time":       datetime.now().isoformat(),
+            "start_time":       now_iso,
+            "end_time":         now_iso,
             "total_duration":   round(elapsed, 2),
             "active_duration":  round(elapsed, 2),
             "idle_duration":    0.0,
@@ -513,6 +520,7 @@ class TimerTracker:
                 upload_interval=60,
                 developer_id=self.user_id,
                 developer_name=self.user_email,
+                pause_ctrl=ctx.pause_ctrl,
             )
             self.mouse_tracker.start()
             log.info("MouseTracker started")
@@ -530,6 +538,7 @@ class TimerTracker:
                 session_duration_seconds=60,
                 developer_id=self.user_id,
                 developer_email=self.user_email,
+                pause_ctrl=ctx.pause_ctrl,
             )
             # start_tracking() blocks, so run the listener in a background thread
             self._spawn(
@@ -544,20 +553,24 @@ class TimerTracker:
         if ctx.stop_event.is_set():
             return
 
-        try:
-            from screenshot_capture import ScreenshotCapture
-            self.screenshot_capture = ScreenshotCapture(
-                interval_min=1,
-                interval_max=60,
-                developer_id=self.user_id,
-                developer_email=self.user_email,
-                developer_username=self.user_email.split('@')[0] if self.user_email else None,
-            )
-            self.screenshot_capture.start()
-            log.info("ScreenshotCapture started")
-        except Exception as e:
-            log.error(f"ScreenshotCapture init: {e}")
-            self.screenshot_capture = None
+        # Screenshot capture is optional and controlled by a feature flag.
+        if getattr(config, "SCREENSHOTS_ENABLED", True):
+            try:
+                from screenshot_capture import ScreenshotCapture
+                # Capture at random intervals between 1 and 2 minutes
+                # (60–120 seconds) as requested.
+                self.screenshot_capture = ScreenshotCapture(
+                    interval_min=60,
+                    interval_max=120,
+                    developer_id=self.user_id,
+                    developer_email=self.user_email,
+                    developer_username=self.user_email.split('@')[0] if self.user_email else None,
+                )
+                self.screenshot_capture.start()
+                log.info("ScreenshotCapture started")
+            except Exception as e:
+                log.error(f"ScreenshotCapture init: {e}")
+                self.screenshot_capture = None
 
         log.info("All trackers initialised")
 
@@ -640,8 +653,16 @@ class TimerTracker:
         try:
             if self.app_monitor:
                 summary = self.app_monitor.get_summary()
-                session.apps_used         = str([a["app"] for a in summary.get("top_apps", [])])
-                session.app_usage_summary = str(summary)
+                # Store as JSON for easier downstream use
+                try:
+                    session.apps_used = json.dumps([a["app"] for a in summary.get("top_apps", [])])
+                except Exception:
+                    session.apps_used = str([a["app"] for a in summary.get("top_apps", [])])
+
+                try:
+                    session.app_usage_summary = json.dumps(summary)
+                except Exception:
+                    session.app_usage_summary = str(summary)
                 session.app_switches      = len(summary.get("top_apps", []))
             if self.mouse_tracker:
                 session.mouse_events = self.mouse_tracker.get_stats().get("total_events", 0)
@@ -682,17 +703,90 @@ class TimerTracker:
         except Exception as e:
             log.error(f"Report generation error: {e}")
 
+    def _best_unit_duration(self, seconds: float) -> Dict[str, object]:
+        """Return duration expressed in the most readable unit.
+
+        Rules:
+        - < 60 seconds  → value in whole seconds, unit="seconds"
+        - 1–60 minutes  → value in minutes (2 decimal precision), unit="minutes"
+        - > 60 minutes  → value in hours   (2 decimal precision), unit="hours"
+        Always includes raw_seconds so downstream consumers can normalise.
+        """
+        sec = max(0.0, float(seconds or 0.0))
+        if sec < 60.0:
+            return {
+                "value": round(sec),
+                "unit": "seconds",
+                "raw_seconds": round(sec, 2),
+            }
+        minutes = sec / 60.0
+        if minutes <= 60.0:
+            return {
+                "value": round(minutes, 2),
+                "unit": "minutes",
+                "raw_seconds": round(sec, 2),
+            }
+        hours = minutes / 60.0
+        return {
+            "value": round(hours, 2),
+            "unit": "hours",
+            "raw_seconds": round(sec, 2),
+        }
+
     def _save_session_to_db(self, session: TrackingSession) -> None:
         try:
+            # Ensure end_time is populated even if, for any reason, it wasn't
+            # set correctly in stop(). This guarantees non-NULL end_time in DB
+            # for completed sessions.
+            if not session.end_time:
+                try:
+                    session.end_time = datetime.now().isoformat()
+                except Exception:
+                    pass
+
+            # Compute human-friendly duration representations without changing
+            # the numeric fields stored in the table (they remain seconds).
+            total_human  = self._best_unit_duration(session.total_duration)
+            active_human = self._best_unit_duration(session.active_duration)
+            idle_human   = self._best_unit_duration(session.idle_duration)
+
+            # Enhance app_usage_summary text field with JSON that also
+            # carries these human-readable durations, while preserving
+            # any existing app summary information.
+            base_summary: Dict[str, object]
+            try:
+                base_summary = json.loads(session.app_usage_summary) if session.app_usage_summary else {}
+            except Exception:
+                base_summary = {"raw": session.app_usage_summary}
+
+            enhanced_summary = {
+                "apps": base_summary,
+                "durations": {
+                    "total": total_human,
+                    "active": active_human,
+                    "idle": idle_human,
+                },
+            }
+
             row = {
-                "session_id": session.session_id, "user_id": session.user_id,
-                "user_email": session.user_email, "start_time": session.start_time,
-                "end_time": session.end_time, "total_duration": session.total_duration,
-                "active_duration": session.active_duration, "idle_duration": session.idle_duration,
-                "status": session.status, "productivity_score": session.productivity_score,
-                "mouse_events": session.mouse_events, "keyboard_events": session.keyboard_events,
-                "app_switches": session.app_switches, "screenshots_taken": session.screenshots_taken,
-                "apps_used": session.apps_used, "app_usage_summary": session.app_usage_summary,
+                "session_id": session.session_id,
+                "user_id": session.user_id,
+                "user_email": session.user_email,
+                "start_time": session.start_time,
+                "end_time": session.end_time,
+                # Keep raw seconds for total/active/idle in the numeric columns
+                "total_duration": session.total_duration,
+                "active_duration": session.active_duration,
+                "idle_duration": session.idle_duration,
+                "status": session.status,
+                "productivity_score": session.productivity_score,
+                "mouse_events": session.mouse_events,
+                "keyboard_events": session.keyboard_events,
+                "app_switches": session.app_switches,
+                "screenshots_taken": session.screenshots_taken,
+                "apps_used": session.apps_used,
+                # Text column now contains JSON with both apps + human durations
+                "app_usage_summary": json.dumps(enhanced_summary),
             }
             resp = self._supabase.table("productivity_sessions").insert(row).execute()
             if getattr(resp, "data", None):

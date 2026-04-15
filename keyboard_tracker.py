@@ -170,10 +170,15 @@ class _TrackingCore:
     Single responsibility: capture raw events and maintain time buckets.
     """
 
-    def __init__(self, config: TrackerConfig) -> None:
-        self.config      = config
-        self._lock       = threading.Lock()
+    def __init__(self, config: TrackerConfig, pause_ctrl=None) -> None:
+        self.config       = config
+        self._lock        = threading.Lock()
         self.window_timer = _WindowTimer(config.idle_threshold_seconds)
+
+        # Optional shared PauseController (from pause_controller.PauseController).
+        # When provided, loops in this core will block while paused and exit
+        # cleanly when the controller is stopped.
+        self.pause_ctrl   = pause_ctrl
 
         # Full session event log (never reset — session-level stats)
         self.events: List[KeyEvent] = []
@@ -268,6 +273,9 @@ class _TrackingCore:
     # ------------------------------------------------------------------
 
     def _on_press(self, key: keyboard.Key) -> None:
+        # Ignore key events when a shared PauseController is actively paused
+        if self.pause_ctrl is not None and getattr(self.pause_ctrl, "is_paused", False):
+            return
         try:
             key_str    = key.char
             is_special = False
@@ -307,6 +315,9 @@ class _TrackingCore:
             self.last_activity = time.monotonic()
 
     def _on_release(self, key: keyboard.Key) -> None:
+        # Ignore key events when a shared PauseController is actively paused
+        if self.pause_ctrl is not None and getattr(self.pause_ctrl, "is_paused", False):
+            return
         try:
             key_str = key.char
         except AttributeError:
@@ -358,6 +369,11 @@ class _TrackingCore:
         last_check = time.monotonic()
 
         while self.is_tracking:
+            # Block cleanly while a shared PauseController is paused. If the
+            # controller is stopped, break out so the loop can terminate.
+            if self.pause_ctrl is not None and hasattr(self.pause_ctrl, "wait_if_paused"):
+                if not self.pause_ctrl.wait_if_paused():
+                    break
             try:
                 now      = time.monotonic()
                 elapsed  = now - last_check
@@ -910,13 +926,17 @@ class KeyboardTracker:
         developer_id:     str         = "",
         developer_email:  str         = "",
         session_duration_seconds: int = 60,
+        pause_ctrl                    = None,
     ) -> None:
         # [FIX-4] store identity as non-nullable strings
         self._developer_id    = developer_id    or ""
         self._developer_email = developer_email or ""
 
         self.config     = TrackerConfig(session_duration_seconds=session_duration_seconds)
-        self._tracking  = _TrackingCore(self.config)
+        # Optional pause controller (from PauseController) allows the
+        # tracker to be coordinated by an external session controller.
+        # When not provided (e.g. CLI usage), behaviour is unchanged.
+        self._tracking  = _TrackingCore(self.config, pause_ctrl=pause_ctrl)
         self._analytics = _Analytics(self._tracking, self.config)
 
         self._supabase_client = supabase_client
