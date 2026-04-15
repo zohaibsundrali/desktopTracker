@@ -287,7 +287,7 @@ class LoginWindow:
         ctk.CTkButton(
             row, text="Forgot password?",
             command=self.show_register, width=1, height=26,
-            fg_color="transparent", text_color=Colors.ACCENT_BLUE
+            fg_color="transparent", text_color="#FFFFFF"
         ).grid(row=0, column=1, sticky="e")
 
         # Login button
@@ -295,7 +295,7 @@ class LoginWindow:
             main_frame, text="Start tracking", command=self.login,
             height=48, font=ctk.CTkFont(size=14, weight="bold"),
             corner_radius=10, fg_color=Colors.ACCENT_BLUE,
-            hover_color="#2E7ED6"
+            hover_color="#2E7ED6", text_color="#FFFFFF"
         )
         login_btn.grid(row=7, column=0, sticky="ew", padx=28)
 
@@ -309,7 +309,7 @@ class LoginWindow:
         ctk.CTkButton(
             reg_frame, text="Talk to your admin",
             command=self.show_register, width=120, height=28,
-            fg_color="transparent", text_color=Colors.ACCENT_BLUE
+            fg_color="transparent", text_color="#FFFFFF"
         ).pack(side="left", padx=(6, 0))
 
     def _credentials_path(self) -> str:
@@ -480,7 +480,8 @@ class DashboardWindow:
             header, text="🚪 Logout", command=self.logout,
             width=130, height=40, corner_radius=8,
             fg_color=Colors.ACCENT_RED, hover_color="#C0392B",
-            font=ctk.CTkFont(size=12, weight="bold")
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#FFFFFF"
         )
         logout_btn.pack(side="right", padx=24, anchor="center")
 
@@ -502,16 +503,16 @@ class DashboardWindow:
         self.start_btn = ctk.CTkButton(
             btn_frame, text="▶ START", command=self.start_timer,
             width=130, height=42, corner_radius=10,
-            fg_color=Colors.ACCENT_GREEN, hover_color="#27AE60",
-            text_color="#000", font=ctk.CTkFont(size=13, weight="bold")
+            fg_color="#169F23", hover_color="#27AE60",
+            text_color="#FFFFFF", font=ctk.CTkFont(size=13, weight="bold")
         )
         self.start_btn.pack(side="left", padx=8)
 
         self.pause_btn = ctk.CTkButton(
             btn_frame, text="⏸ PAUSE", command=self.pause_timer,
             width=130, height=42, corner_radius=10,
-            fg_color=Colors.ACCENT_ORANGE, hover_color="#E67E22",
-            text_color="#000", font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#F7680F", hover_color="#E67E22",
+            text_color="#FFFFFF", font=ctk.CTkFont(size=13, weight="bold"),
             state="disabled"
         )
         self.pause_btn.pack(side="left", padx=8)
@@ -519,8 +520,8 @@ class DashboardWindow:
         self.stop_btn = ctk.CTkButton(
             btn_frame, text="⏹ STOP", command=self.stop_timer,
             width=130, height=42, corner_radius=10,
-            fg_color=Colors.ACCENT_RED, hover_color="#C0392B",
-            text_color="#FFF", font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#DF3744", hover_color="#C0392B",
+            text_color="#FFFFFF", font=ctk.CTkFont(size=13, weight="bold"),
             state="disabled"
         )
         self.stop_btn.pack(side="left", padx=8)
@@ -571,7 +572,7 @@ class DashboardWindow:
 
     def pause_timer(self):
         self.pause_btn.configure(state="disabled")
-        self.start_btn.configure(text="▶ RESUME", state="normal", command=self.resume_timer)
+        self.start_btn.configure(text="▶ RESUME", state="normal", command=self.resume_timer, fg_color="#2091EB")
         self.status_label.configure(text="Pausing...", text_color=Colors.ACCENT_ORANGE)
         self.app.update_idletasks()
 
@@ -612,7 +613,7 @@ class DashboardWindow:
                     def _ok():
                         if not self.app.winfo_exists():
                             return
-                        self.start_btn.configure(text="▶ START", state="disabled", command=self.start_timer)
+                        self.start_btn.configure(text="▶ START", state="disabled", command=self.start_timer, fg_color="#169F23")
                         self.pause_btn.configure(state="normal")
                         self.status_label.configure(text="● TRACKING ACTIVE", text_color=Colors.ACCENT_GREEN)
                     try:
@@ -665,7 +666,7 @@ class DashboardWindow:
         threading.Thread(target=_bg_stop, daemon=True).start()
 
     def _on_session_stopped(self, session, time_str):
-        self.start_btn.configure(text="▶ START", state="normal", command=self.start_timer)
+        self.start_btn.configure(text="▶ START", state="normal", command=self.start_timer, fg_color="#169F23")
         self.pause_btn.configure(state="disabled", text="⏸ PAUSE", command=self.pause_timer)
         self.stop_btn.configure(state="disabled")
         self.radial_timer.reset()
@@ -676,7 +677,7 @@ class DashboardWindow:
                             f"📱 App switches: {session.app_switches}")
 
     def _reset_buttons_on_error(self, msg):
-        self.start_btn.configure(text="▶ START", state="normal", command=self.start_timer)
+        self.start_btn.configure(text="▶ START", state="normal", command=self.start_timer, fg_color="#169F23")
         self.pause_btn.configure(state="disabled", text="⏸ PAUSE", command=self.pause_timer)
         self.stop_btn.configure(state="disabled")
         self.status_label.configure(text=f"Error: {msg}", text_color=Colors.ACCENT_RED)
