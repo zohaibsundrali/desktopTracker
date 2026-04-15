@@ -284,15 +284,15 @@ class LoginWindow:
             variable=self.remember_var, onvalue=True, offvalue=False
         ).grid(row=0, column=0, sticky="w")
 
-        ctk.CTkButton(
-            row, text="Forgot password?",
-            command=self.show_register, width=1, height=26,
-            fg_color="transparent", text_color="#FFFFFF"
-        ).grid(row=0, column=1, sticky="e")
+        # ctk.CTkButton(
+        #     row, text="Forgot password?",
+        #     command=self.show_register, width=1, height=26,
+        #     fg_color="transparent", text_color="#FFFFFF"
+        # ).grid(row=0, column=1, sticky="e")
 
         # Login button
         login_btn = ctk.CTkButton(
-            main_frame, text="Start tracking", command=self.login,
+            main_frame, text="Log In", command=self.login,
             height=48, font=ctk.CTkFont(size=14, weight="bold"),
             corner_radius=10, fg_color=Colors.ACCENT_BLUE,
             hover_color="#2E7ED6", text_color="#FFFFFF"
@@ -306,11 +306,11 @@ class LoginWindow:
             reg_frame, text="No account yet?",
             text_color=Colors.TEXT_MUTED, font=ctk.CTkFont(size=11)
         ).pack(side="left")
-        ctk.CTkButton(
-            reg_frame, text="Talk to your admin",
-            command=self.show_register, width=120, height=28,
-            fg_color="transparent", text_color="#FFFFFF"
-        ).pack(side="left", padx=(6, 0))
+        # ctk.CTkButton(
+        #     reg_frame, text="Talk to your admin",
+        #     command=self.show_register, width=120, height=28,
+        #     fg_color="transparent", text_color="#FFFFFF"
+        # ).pack(side="left", padx=(6, 0))
 
     def _credentials_path(self) -> str:
         """Return path to local file where Remember Me credentials are stored."""
@@ -504,7 +504,7 @@ class DashboardWindow:
             btn_frame, text="▶ START", command=self.start_timer,
             width=130, height=42, corner_radius=10,
             fg_color="#169F23", hover_color="#27AE60",
-            text_color="#FFFFFF", font=ctk.CTkFont(size=13, weight="bold")
+            text_color="#000", font=ctk.CTkFont(size=13, weight="bold")
         )
         self.start_btn.pack(side="left", padx=8)
 
@@ -512,7 +512,7 @@ class DashboardWindow:
             btn_frame, text="⏸ PAUSE", command=self.pause_timer,
             width=130, height=42, corner_radius=10,
             fg_color="#F7680F", hover_color="#E67E22",
-            text_color="#FFFFFF", font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#000", font=ctk.CTkFont(size=13, weight="bold"),
             state="disabled"
         )
         self.pause_btn.pack(side="left", padx=8)
@@ -521,7 +521,7 @@ class DashboardWindow:
             btn_frame, text="⏹ STOP", command=self.stop_timer,
             width=130, height=42, corner_radius=10,
             fg_color="#DF3744", hover_color="#C0392B",
-            text_color="#FFFFFF", font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#FFF", font=ctk.CTkFont(size=13, weight="bold"),
             state="disabled"
         )
         self.stop_btn.pack(side="left", padx=8)
