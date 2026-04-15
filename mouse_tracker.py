@@ -106,6 +106,7 @@ class MouseTracker:
         developer_id:      Optional[str] = None,
         developer_name:    Optional[str] = None,
         upload_interval:   int   = 60,
+        pause_ctrl:        Optional[object] = None,
     ):
         # Config
         self.idle_threshold    = idle_threshold
@@ -114,6 +115,11 @@ class MouseTracker:
         self.upload_interval   = upload_interval
         self.developer_id      = developer_id   or os.getenv("DEVELOPER_ID",  "00000000-0000-0000-0000-000000000000")
         self.developer_name    = developer_name or os.getenv("DEVELOPER_NAME", "Unknown")
+
+        # Optional shared pause controller (from PauseController)
+        # When provided, all worker loops will block while the session is
+        # paused and exit cleanly when the session is stopped.
+        self.pause_ctrl        = pause_ctrl
 
         # Screen
         self.screen_width, self.screen_height = pyautogui.size()
@@ -197,6 +203,23 @@ class MouseTracker:
         print(f"   Developer      : {self.developer_name} ({self.developer_id})")
         print(f"   Upload interval: every {self.upload_interval}s + on stop")
         print(f"   Supabase       : {'✅ Connected' if self.supabase else '❌ Not connected'}")
+
+    # ── Pause helper ───────────────────────────────────────────────────────
+
+    def _wait_if_paused(self) -> bool:
+        """Block if a shared PauseController is paused.
+
+        Returns True while the session is running, or False if the
+        controller has been stopped. When no controller is attached,
+        this is a cheap no-op that always returns True.
+        """
+        ctrl = getattr(self, "pause_ctrl", None)
+        if ctrl is None:
+            return True
+        wait = getattr(ctrl, "wait_if_paused", None)
+        if not callable(wait):
+            return True
+        return bool(wait())
 
     # ── Supabase init ────────────────────────────────────────────────────────
 
@@ -336,6 +359,9 @@ class MouseTracker:
     def _periodic_upload_loop(self):
         print(f"🔄 Periodic upload active — every {self.upload_interval}s")
         while self.is_tracking:
+            # Respect shared pause controller if present
+            if not self._wait_if_paused():
+                break
             time.sleep(self.upload_interval)
             if not self.is_tracking:
                 break
@@ -441,6 +467,8 @@ class MouseTracker:
     def _track_time_continuously(self):
         last_check = time.time()
         while self.is_tracking:
+            if not self._wait_if_paused():
+                break
             try:
                 now        = time.time()
                 since_last = now - self.last_activity_time
@@ -471,6 +499,8 @@ class MouseTracker:
 
     def _track_movement(self):
         while self.is_tracking:
+            if not self._wait_if_paused():
+                break
             try:
                 now     = time.time()
                 current = pyautogui.position()
@@ -512,6 +542,8 @@ class MouseTracker:
 
     def _monitor_idle_status(self):
         while self.is_tracking:
+            if not self._wait_if_paused():
+                break
             time.sleep(1)
 
     # ── Helpers ──────────────────────────────────────────────────────────────

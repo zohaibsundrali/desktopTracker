@@ -190,11 +190,7 @@ class NotificationPopup:
             print(f"⚠️  Toast error: {exc}")
 
 
-# ── Main capture engine ───────────────────────────────────────────────────────
-
 class ScreenshotCapture:
-   
-
     def __init__(
         self,
         interval_min: int = 1,
@@ -234,7 +230,6 @@ class ScreenshotCapture:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        
 
     def stop(self):
         self._running = False
@@ -259,19 +254,7 @@ class ScreenshotCapture:
     # ── single capture ────────────────────────────────────────────────────────
 
     def capture(self, annotation: str = "") -> Optional[ScreenshotInfo]:
-        """
-        Take one screenshot (optionally annotated), upload to Supabase,
-        and record metadata in-memory.
-
-        Parameters
-        ----------
-        annotation : str
-            Text to overlay on the screenshot (bottom-left). Empty = none.
-
-        Returns
-        -------
-        ScreenshotInfo or None on failure.
-        """
+        """Take one screenshot, upload to Supabase, and keep metadata in memory."""
         try:
             raw: Image.Image = pyautogui.screenshot()
             w, h = raw.size
@@ -310,14 +293,13 @@ class ScreenshotCapture:
                 self._screenshots = self._screenshots[-self.max_history:]
             self._total += 1
 
-            print(f"✅ [{ts.strftime('%H:%M:%S')}]  {filename}  ({size_kb} KB)"
-                  f"  {w}×{h}")
+            print(f"✅ [{ts.strftime('%H:%M:%S')}]  {filename}  ({size_kb} KB)  {w}×{h}")
 
             self._popup.notify()
             return info
 
         except Exception as exc:
-            
+            print(f"⚠️  Screenshot capture error: {exc}")
             return None
 
     # ── annotation helper ─────────────────────────────────────────────────────
@@ -351,12 +333,7 @@ class ScreenshotCapture:
     # ── Supabase upload ───────────────────────────────────────────────────────
 
     def _upload(self, info: ScreenshotInfo, data: bytes) -> Optional[str]:
-        """
-        Upload screenshot bytes to Supabase Storage, then immediately insert
-        metadata into the screenshots table using the same capture timestamp.
-        Database insert only runs after a confirmed successful storage upload.
-        Returns the public URL on full success, None on any failure.
-        """
+        """Upload bytes to Supabase Storage, then insert metadata row."""
         sb = _supabase_client()
         if sb is None:
             return None
@@ -364,55 +341,50 @@ class ScreenshotCapture:
         mime         = "image/jpeg" if info.filename.endswith(".jpg") else "image/png"
         storage_path = f"{self._developer_username}/{info.filename}"
 
-        # ── Step 1: Storage upload ────────────────────────────────────────────
-        # Gate: if this fails we return immediately — no metadata insert attempted.
+        # 1) Storage upload
         try:
             sb.storage.from_(STORAGE_BUCKET).upload(
                 path=storage_path,
                 file=data,
                 file_options={"content-type": mime},
             )
-            
         except Exception as exc:
-            
-            return None   # hard stop; table stays clean
+            print(f"   ❌ Storage upload failed: {exc}")
+            return None
 
-        # ── Step 2: Retrieve public URL ───────────────────────────────────────
+        # 2) Public URL
         try:
             public_url: Optional[str] = sb.storage.from_(STORAGE_BUCKET).get_public_url(storage_path)
         except Exception as exc:
-            
+            print(f"   ⚠️ Public URL fetch failed: {exc}")
             public_url = None
 
-        # ── Step 3: Metadata insert (runs ONLY after confirmed upload) ────────
-        # Use instance-level developer identity (dynamic per user session)
+        # 3) Metadata insert (only if we have a developer id)
         if self._developer_id is None:
-          
-            return public_url  # upload already succeeded; preserve the URL
+            return public_url
 
         is_annotated = bool(info.annotation_text)
 
         row = {
-            "developer_id":    self._developer_id,    # uuid — from logged-in user
-            "developer_email": self._developer_email,  # text — from logged-in user
-            "filename":        info.filename,          # text
-            "storage_path":    storage_path,           # text (unique constraint)
-            "public_url":      public_url,             # text | null
-            "width":           info.width,             # integer
-            "height":          info.height,            # integer
-            "size_kb":         round(info.size_kb, 2), # numeric(10,2)
-            "mime_type":       mime,                   # text
-            "app_active":      info.app_active,        # text | null
-            "is_annotated":    is_annotated,           # boolean
-            "annotation_text": info.annotation_text,  # text | null
-            "timestamp":       info.timestamp,         # timestamptz — same as capture time
+            "developer_id":    self._developer_id,
+            "developer_email": self._developer_email,
+            "filename":        info.filename,
+            "storage_path":    storage_path,
+            "public_url":      public_url,
+            "width":           info.width,
+            "height":          info.height,
+            "size_kb":         round(info.size_kb, 2),
+            "mime_type":       mime,
+            "app_active":      info.app_active,
+            "is_annotated":    is_annotated,
+            "annotation_text": info.annotation_text,
+            "timestamp":       info.timestamp,
         }
 
         try:
             result = sb.table(METADATA_TABLE).insert(row).execute()
-            # Supabase Python client can return empty data without raising on RLS denial
             if result.data:
-                print(f"   🗄️  Metadata inserted  (id: {result.data[0].get('id', '?')})") 
+                print(f"   🗄️  Metadata inserted  (id: {result.data[0].get('id', '?')})")
             else:
                 print("   ⚠️  Metadata insert returned no data — check RLS policies.")
         except Exception as exc:
@@ -433,7 +405,7 @@ class ScreenshotCapture:
         }
 
     def get_stats(self) -> dict:
-        """Alias for stats() — ensures compatibility with dashboard calls."""
+        """Alias for stats() — used by TimerTracker/dashboard."""
         return self.stats()
 
     def recent(self, n: int = 5) -> List[ScreenshotInfo]:
@@ -441,12 +413,10 @@ class ScreenshotCapture:
 
     def print_summary(self):
         s = self.stats()
-      
         if self._screenshots:
-            
             for i, ss in enumerate(self.recent(5), 1):
                 t = datetime.fromisoformat(ss.timestamp).strftime("%H:%M:%S")
-                
+                # Intentionally minimal: avoid changing console behaviour
         
 
 

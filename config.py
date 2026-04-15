@@ -16,5 +16,11 @@ class Config:
     # Paths
     DATA_DIR = "user_data"
     SCREENSHOT_DIR = "screenshots"
+
+    # Feature flags
+    # Toggle automatic background screenshots. Defaults to enabled to
+    # preserve existing behaviour; set SCREENSHOTS_ENABLED=false in the
+    # environment to disable without touching code.
+    SCREENSHOTS_ENABLED = os.getenv("SCREENSHOTS_ENABLED", "true").lower() == "true"
     
 config = Config()
