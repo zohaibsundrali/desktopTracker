@@ -314,7 +314,7 @@ class TimerTracker:
                     ctx.pause_ctrl.stop()    # unblock workers → they exit their loops
                     ctx.stop_event.set()     # exit lifecycle + display loops
 
-                total_elapsed       = self.instant_timer.stop()
+                total_elapsed       = int(round(self.instant_timer.stop()))
                 self._session_state = SessionState.IDLE
 
                 if self.session:
@@ -327,7 +327,10 @@ class TimerTracker:
                 completed    = self.session
                 self.session = None
 
-                self._spawn(lambda: self._finalize_session(completed), "SessionFinalize")
+                # Finalize synchronously so the completed row is persisted
+                # even if the app closes immediately after stopping.
+                if completed:
+                    self._finalize_session(completed)
 
                 log.info(f"Session STOPPED — total: {total_elapsed:.1f}s")
                 return completed
@@ -347,7 +350,7 @@ class TimerTracker:
     # =========================================================================
 
     def get_current_time(self) -> Dict:
-        elapsed = self.instant_timer.get_elapsed()
+        elapsed = int(round(self.instant_timer.get_elapsed()))
         h, rem  = divmod(int(elapsed), 3600)
         m, s    = divmod(rem, 60)
         return {
@@ -468,8 +471,8 @@ class TimerTracker:
             "user_email":       self.user_email,
             "start_time":       now_iso,
             "end_time":         now_iso,
-            "total_duration":   round(elapsed, 2),
-            "active_duration":  round(elapsed, 2),
+            "total_duration":   elapsed,
+            "active_duration":  elapsed,
             "idle_duration":    0.0,
             "mouse_events":     mouse_events,
             "keyboard_events":  keyboard_events,
@@ -481,7 +484,8 @@ class TimerTracker:
         }
 
         try:
-            resp = self._supabase.table("productivity_sessions").insert(row).execute()
+            resp = self._supabase.table("productivity_sessions") \
+                .upsert(row, on_conflict="session_id").execute()
             if getattr(resp, "data", None):
                 log.info(f"Periodic stats uploaded for {session_id} at {elapsed:.0f}s")
             else:
@@ -788,7 +792,8 @@ class TimerTracker:
                 # Text column now contains JSON with both apps + human durations
                 "app_usage_summary": json.dumps(enhanced_summary),
             }
-            resp = self._supabase.table("productivity_sessions").insert(row).execute()
+            resp = self._supabase.table("productivity_sessions") \
+                .upsert(row, on_conflict="session_id").execute()
             if getattr(resp, "data", None):
                 log.info(f"Session saved: {session.session_id}")
             else:
