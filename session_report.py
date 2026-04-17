@@ -406,7 +406,7 @@ class SessionReport:
    Duration: {duration}
    Apps Used: {self.applications.total_apps}
    Productivity: {self.productivity_score:.1f}/100
-        """.strip()
+        """.strip() 
         
         return report
     
