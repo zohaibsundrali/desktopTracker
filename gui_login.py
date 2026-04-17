@@ -635,6 +635,9 @@ class DashboardWindow:
 
     def stop_timer(self):
         self.status_label.configure(text="Stopping...", text_color=Colors.ACCENT_ORANGE)
+        self.start_btn.configure(state="disabled")
+        self.pause_btn.configure(state="disabled")
+        self.stop_btn.configure(state="disabled")
         self.app.update_idletasks()
 
         def _bg_stop():
@@ -653,10 +656,17 @@ class DashboardWindow:
                     except RuntimeError:
                         pass
                 else:
-                    try:
-                        self.app.after(0, lambda: self._reset_buttons_on_error("Stop failed"))
-                    except RuntimeError:
-                        pass
+                    if self.timer.is_finalizing:
+                        try:
+                            self.app.after(0, lambda: self.status_label.configure(
+                                text="Finalizing session...", text_color=Colors.TEXT_MUTED))
+                        except RuntimeError:
+                            pass
+                    else:
+                        try:
+                            self.app.after(0, lambda: self._reset_buttons_on_error("Stop failed"))
+                        except RuntimeError:
+                            pass
             except Exception as exc:
                 msg = str(exc)
                 try:
@@ -710,9 +720,25 @@ class DashboardWindow:
             self.app.after_cancel(self._timer_after_id)
         if self.timer_running:
             if messagebox.askyesno("Logout", "Stop timer and logout?"):
-                self.timer.stop()
+                self.status_label.configure(text="Stopping...", text_color=Colors.ACCENT_ORANGE)
+                self.start_btn.configure(state="disabled")
+                self.pause_btn.configure(state="disabled")
+                self.stop_btn.configure(state="disabled")
+                def _bg_logout_stop():
+                    try:
+                        self.timer.stop()
+                    finally:
+                        try:
+                            self.app.after(0, self._finish_logout)
+                        except RuntimeError:
+                            pass
+                threading.Thread(target=_bg_logout_stop, daemon=True).start()
+                return
             else:
                 return
+        self._finish_logout()
+
+    def _finish_logout(self):
         self.auth.logout()
         self.app.destroy()
         self.login_window.refresh_credentials_after_logout()

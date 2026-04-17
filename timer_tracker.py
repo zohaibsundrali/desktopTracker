@@ -208,6 +208,10 @@ class TimerTracker:
         self._api_lock     = threading.Lock()
         self._threads_lock = threading.Lock()
         self._active_threads: List[threading.Thread] = []
+        self._finalize_lock = threading.Lock()
+        self._finalize_in_progress = False
+        self._stop_in_progress = False
+        self._last_completed_session: Optional[TrackingSession] = None
 
         self._supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
 
@@ -223,6 +227,9 @@ class TimerTracker:
 
     def start(self) -> bool:
         with self._api_lock:
+            if self._finalize_in_progress:
+                log.warning("start() ignored — finalization in progress")
+                return False
             if self._session_state != SessionState.IDLE:
                 log.warning(f"start() ignored — state: {self._session_state.name}")
                 return False
@@ -304,9 +311,16 @@ class TimerTracker:
     def stop(self) -> Optional[TrackingSession]:
         with self._api_lock:
             if self._session_state == SessionState.IDLE:
+                if self._finalize_in_progress and self._last_completed_session:
+                    log.info("stop() called during finalization — returning last session")
+                    return self._last_completed_session
                 log.warning("stop() ignored — no active session")
                 return None
+            if self._stop_in_progress:
+                log.info("stop() already in progress — returning last session")
+                return self._last_completed_session
             try:
+                self._stop_in_progress = True
                 ctx      = self._ctx
                 self._ctx = None
 
@@ -327,18 +341,34 @@ class TimerTracker:
                 completed    = self.session
                 self.session = None
 
-                # Finalize synchronously so the completed row is persisted
-                # even if the app closes immediately after stopping.
                 if completed:
-                    self._finalize_session(completed)
+                    self._finalize_in_progress = True
+                    self._last_completed_session = completed
 
                 log.info(f"Session STOPPED — total: {total_elapsed:.1f}s")
-                return completed
-
             except Exception as e:
                 log.error(f"stop() error: {e}", exc_info=True)
                 self._session_state = SessionState.IDLE
                 return None
+            finally:
+                self._stop_in_progress = False
+
+        if completed:
+            threading.Thread(
+                target=self._finalize_session_safe,
+                args=(completed,),
+                daemon=True,
+                name="SessionFinalizer",
+            ).start()
+
+        return completed
+
+    def _finalize_session_safe(self, session: TrackingSession) -> None:
+        with self._finalize_lock:
+            try:
+                self._finalize_session(session)
+            finally:
+                self._finalize_in_progress = False
 
     def shutdown(self):
         if self._session_state != SessionState.IDLE:
@@ -814,3 +844,7 @@ class TimerTracker:
 
     def export_report_json(self) -> Optional[dict]:
         return self.session_report.to_dict() if self.session_report else None
+
+    @property
+    def is_finalizing(self) -> bool:
+        return self._finalize_in_progress
