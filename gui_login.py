@@ -672,9 +672,7 @@ class DashboardWindow:
         self.radial_timer.reset()
         self.status_label.configure(text=f"✓ Session complete: {time_str}", text_color=Colors.ACCENT_GREEN)
         messagebox.showinfo("Session Completed",
-                            f"✅ Timer stopped\n⏱️  Total: {time_str}\n"
-                            f"📊 Productivity: {session.productivity_score:.1f}%\n"
-                            f"📱 App switches: {session.app_switches}")
+                            f"✅ Timer stopped\n⏱️  Total: {time_str}")
 
     def _reset_buttons_on_error(self, msg):
         self.start_btn.configure(text="▶ START", state="normal", command=self.start_timer, fg_color="#169F23")
