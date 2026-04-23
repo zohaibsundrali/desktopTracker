@@ -17,8 +17,7 @@ import pyautogui
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 
-import tkinter as tk
-from tkinter import ttk
+from notification_popup import notify_screenshot_captured
 
 # Load .env from the same directory as this script — works regardless of
 # where the process is launched from.
@@ -90,120 +89,6 @@ class ScreenshotInfo:
     annotation_text: Optional[str] = None
 
 
-# ── Popup notification ────────────────────────────────────────────────────────
-
-class NotificationPopup:
-    
-
-    def __init__(self):
-        self._q:      queue.Queue = queue.Queue()
-        self._root:   Optional[tk.Tk] = None
-        self._running = False
-        self._stop_event = threading.Event()
-
-    def start(self):
-        if self._running:
-            return
-        if threading.current_thread() is not threading.main_thread():
-            # Tk is not thread-safe; avoid starting a second Tk instance off the main thread.
-            return
-        self._running = True
-        self._stop_event.clear()
-        t = threading.Thread(target=self._loop, daemon=True)
-        t.start()
-
-    def stop(self):
-        if not self._running:
-            return
-        self._running = False
-        self._stop_event.set()
-        try:
-            self._q.put_nowait("stop")
-        except Exception:
-            pass
-
-    def notify(self):
-        if self._running:
-            self._q.put_nowait("show")
-
-    # ── internal ──────────────────────────────────────────────────────────────
-
-    def _loop(self):
-        try:
-            self._root = tk.Tk()
-            self._root.withdraw()
-            while not self._stop_event.is_set():
-                self._drain()
-                try:
-                    self._root.update()
-                except Exception:
-                    break
-                time.sleep(0.05)
-            try:
-                self._root.destroy()
-            except Exception:
-                pass
-        except Exception as exc:
-            print(f"⚠️  Notification thread error: {exc}")
-
-    def _drain(self):
-        try:
-            while True:
-                msg = self._q.get_nowait()
-                if msg == "stop":
-                    self._stop_event.set()
-                    return
-                self._show_toast()
-        except queue.Empty:
-            pass
-
-    def _show_toast(self):
-        try:
-            W, H = 300, 90
-            sw = self._root.winfo_screenwidth()
-            sh = self._root.winfo_screenheight()
-
-            win = tk.Toplevel(self._root)
-            win.overrideredirect(True)
-            win.attributes("-topmost", True)
-            win.attributes("-alpha", 0.95)
-            win.configure(bg="#1a1a1a")
-            win.geometry(f"{W}x{H}+{sw - W - 20}+{sh - H - 60}")
-
-            frm = tk.Frame(win, bg="#1a1a1a", padx=16, pady=12)
-            frm.pack(fill=tk.BOTH, expand=True)
-
-            tk.Label(frm, text="📸", font=("Arial", 22),
-                     bg="#1a1a1a", fg="#4CAF50").pack(side=tk.LEFT, padx=(0, 12))
-
-            txt = tk.Frame(frm, bg="#1a1a1a")
-            txt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            tk.Label(txt, text="Screenshot",
-                     font=("Arial", 13, "bold"), bg="#1a1a1a", fg="white"
-                     ).pack(anchor=tk.W)
-            tk.Label(txt, text="captured successfully",
-                     font=("Arial", 10), bg="#1a1a1a", fg="#CCCCCC"
-                     ).pack(anchor=tk.W)
-
-            # Progress bar drains over 5 s
-            bar_frame = tk.Frame(win, bg="#1a1a1a", height=3)
-            bar_frame.pack(fill=tk.X, side=tk.BOTTOM)
-            bar = ttk.Progressbar(bar_frame, mode="determinate",
-                                  length=W, maximum=100, value=100)
-            bar.pack(fill=tk.X)
-
-            def _tick(v):
-                if v > 0:
-                    bar["value"] = v
-                    bar.after(50, _tick, v - 2)
-
-            _tick(100)
-            win.after(5000, win.destroy)
-
-        except Exception as exc:
-            print(f"⚠️  Toast error: {exc}")
-
-
 class ScreenshotCapture:
     def __init__(
         self,
@@ -232,9 +117,6 @@ class ScreenshotCapture:
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
-        self._popup = NotificationPopup()
-        self._popup.start()
-
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     def start(self):
@@ -247,7 +129,6 @@ class ScreenshotCapture:
 
     def stop(self):
         self._running = False
-        self._popup.stop()
         if self._thread:
             self._thread.join(timeout=3)
         print(f"\n🛑 Capture stopped  —  {self._total} screenshots uploaded.")
@@ -273,7 +154,8 @@ class ScreenshotCapture:
             raw: Image.Image = pyautogui.screenshot()
             w, h = raw.size
             ts = datetime.now()
-            ts_str = ts.strftime("%Y%m%d_%H%M%S")
+            ts_str = ts.strftime("%Y%m%d_%H%M%S_%f")[:-3]  # milliseconds
+            suffix = _uuid.uuid4().hex[:8]
 
             if annotation:
                 raw = self._annotate(raw, annotation)
@@ -281,10 +163,10 @@ class ScreenshotCapture:
             # Encode to bytes in-memory
             buf = io.BytesIO()
             if self.compress and not annotation:
-                filename = f"screenshot_{ts_str}.jpg"
+                filename = f"screenshot_{ts_str}_{suffix}.jpg"
                 raw.save(buf, "JPEG", optimize=True, quality=self.quality)
             else:
-                filename = f"screenshot_{ts_str}.png"
+                filename = f"screenshot_{ts_str}_{suffix}.png"
                 raw.convert("RGB").save(buf, "PNG")
 
             image_bytes = buf.getvalue()
@@ -309,7 +191,8 @@ class ScreenshotCapture:
 
             print(f"✅ [{ts.strftime('%H:%M:%S')}]  {filename}  ({size_kb} KB)  {w}×{h}")
 
-            self._popup.notify()
+            # Trigger toast notification (GUI thread shows it).
+            notify_screenshot_captured()
             return info
 
         except Exception as exc:

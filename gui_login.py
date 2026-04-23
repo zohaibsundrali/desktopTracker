@@ -170,6 +170,13 @@ class LoginWindow:
         self.app.minsize(700, 450)
         ctk.set_appearance_mode("dark")
 
+        # Hook main-thread toast notifications (e.g., screenshot captured).
+        try:
+            from notification_popup import set_notification_root
+            set_notification_root(self.app)
+        except Exception:
+            pass
+
         self.auth = AuthManager()
         self.dashboard = None
         self.remember_var = BooleanVar(value=False)
@@ -441,6 +448,13 @@ class DashboardWindow:
         self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
         ctk.set_appearance_mode("dark")
         self.app.configure(fg_color=Colors.BG_PRIMARY)
+
+        # Ensure toasts stay attached after transitioning to dashboard.
+        try:
+            from notification_popup import set_notification_root
+            set_notification_root(self.app)
+        except Exception:
+            pass
 
         self.setup_ui()
         self.start_timer_update()
