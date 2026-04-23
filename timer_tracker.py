@@ -466,7 +466,6 @@ class TimerTracker:
         keyboard_events = 0
         app_switches    = 0
         screenshots     = 0
-        apps_used       = "[]"
 
         if self.mouse_tracker:
             try:
@@ -481,8 +480,6 @@ class TimerTracker:
         if self.app_monitor:
             try:
                 summary      = self.app_monitor.get_summary()
-                app_switches = len(summary.get("top_apps", []))
-                apps_used    = str([a["app"] for a in summary.get("top_apps", [])])
             except Exception:
                 pass
         if self.screenshot_capture:
@@ -506,9 +503,7 @@ class TimerTracker:
             "idle_duration":    0.0,
             "mouse_events":     mouse_events,
             "keyboard_events":  keyboard_events,
-            "app_switches":     app_switches,
             "screenshots_taken": screenshots,
-            "apps_used":        apps_used,
             "status":           "periodic",
             "productivity_score": 0.0,
         }
@@ -689,15 +684,9 @@ class TimerTracker:
                 summary = self.app_monitor.get_summary()
                 # Store as JSON for easier downstream use
                 try:
-                    session.apps_used = json.dumps([a["app"] for a in summary.get("top_apps", [])])
-                except Exception:
-                    session.apps_used = str([a["app"] for a in summary.get("top_apps", [])])
-
-                try:
                     session.app_usage_summary = json.dumps(summary)
                 except Exception:
                     session.app_usage_summary = str(summary)
-                session.app_switches      = len(summary.get("top_apps", []))
             if self.mouse_tracker:
                 session.mouse_events = self.mouse_tracker.get_stats().get("total_events", 0)
             if self.keyboard_tracker:
@@ -816,9 +805,7 @@ class TimerTracker:
                 "productivity_score": session.productivity_score,
                 "mouse_events": session.mouse_events,
                 "keyboard_events": session.keyboard_events,
-                "app_switches": session.app_switches,
                 "screenshots_taken": session.screenshots_taken,
-                "apps_used": session.apps_used,
                 # Text column now contains JSON with both apps + human durations
                 "app_usage_summary": json.dumps(enhanced_summary),
             }
