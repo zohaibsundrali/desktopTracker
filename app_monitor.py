@@ -58,44 +58,6 @@ AUTO_SAVE_SECS  = 60.0   # auto-flush to Supabase every N seconds
 MAX_RETRIES     = 3      # maximum retry attempts for failed uploads
 RETRY_BACKOFF   = 2.0    # exponential backoff multiplier (2s, 4s, 8s)
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  ✅ NEW: ACTIVITY DETECTION CONSTANTS
-# ─────────────────────────────────────────────────────────────────────────────
-IDLE_THRESHOLD_SECS = 120.0   # seconds of no input before user is considered idle
-                               # e.g. 120s = 2 min idle → stop counting app time
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-#  ✅ NEW: USER ACTIVITY DETECTOR
-#  Detects the foreground app and whether the user is actually active
-#  (keyboard/mouse recently used) using Windows APIs.
-# ═════════════════════════════════════════════════════════════════════════════
-
-class _LASTINPUTINFO(ctypes.Structure):
-    """Windows LASTINPUTINFO struct for GetLastInputInfo."""
-    _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
-
-
-def get_idle_seconds() -> float:
-    """
-    Return how many seconds have passed since the user last touched
-    the keyboard or mouse.
-
-    Uses GetLastInputInfo on Windows (millisecond precision).
-    Returns 0.0 on Linux / non-Windows platforms (no idle detection).
-    """
-    if _PLATFORM != "windows":
-        return 0.0
-    try:
-        lii = _LASTINPUTINFO()
-        lii.cbSize = ctypes.sizeof(_LASTINPUTINFO)
-        ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii))
-        millis_since_boot = ctypes.windll.kernel32.GetTickCount()
-        idle_ms = millis_since_boot - lii.dwTime
-        return max(0.0, idle_ms / 1000.0)
-    except Exception:
-        return 0.0
-
 
 def get_foreground_app() -> Optional[str]:
     """
@@ -546,26 +508,21 @@ class CloudDB:
 
 class AppMonitor:
     """
-    Orchestrates foreground-only, idle-aware developer activity tracking.
+    Orchestrates foreground-only developer activity tracking.
 
-    ✅ KEY CHANGES vs original:
+     ✅ KEY CHANGES vs original:
     ──────────────────────────────────────────────────────────────────────────
     1. FOREGROUND-ONLY TRACKING
        Only the app the user is actively looking at (GetForegroundWindow)
        accumulates active time. Every other running process is ignored for
        time counting. chrome.exe open in background? → 0 seconds counted.
 
-    2. IDLE DETECTION (GetLastInputInfo)
-       If the user hasn't touched keyboard or mouse for IDLE_THRESHOLD_SECS
-       seconds, no app gets active time credited — even if a window is in
-       the foreground (e.g., a video playing while user stepped away).
-
-    3. INCREMENTAL TIME ACCUMULATION
+     2. INCREMENTAL TIME ACCUMULATION
        Each poll tick adds exactly POLL_INTERVAL seconds to the foreground
-       app's active_seconds (when not idle). This is far more accurate than
+         app's active_seconds. This is far more accurate than
        end_time - start_time which counts all background time.
 
-    4. SESSION CREATION (unchanged logic)
+     3. SESSION CREATION (unchanged logic)
        AppSession objects are still created per app, but only "open" when
        we see the app in the foreground for the first time. Sessions are
        kept open until the process exits or tracking stops, but their
@@ -597,18 +554,15 @@ class AppMonitor:
         self._done:    List[AppSession]      = []   # finalized sessions
         self._last_save_time: float          = time.time()
 
-        # ✅ NEW: Track current foreground app and idle state for live_apps()
+        # Track current foreground app for live_apps()
         self._current_foreground: Optional[str] = None
-        self._is_idle: bool = False
 
         self._cloud = CloudDB()
         self._error_tracker = ErrorTracker()
 
         log.info(
-            "AppMonitor initialized | login=%s | email=%s | session=%s | "
-            "idle_threshold=%ss",
+            "AppMonitor initialized | login=%s | email=%s | session=%s",
             self.user_login, self.user_email, self.session_id,
-            IDLE_THRESHOLD_SECS,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -616,7 +570,7 @@ class AppMonitor:
     # ─────────────────────────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Begin tracking. Only foreground + non-idle time is counted."""
+        """Begin tracking. Only foreground app time is counted."""
         if self._running:
             log.warning("Already running — ignoring duplicate start()")
             return
@@ -630,7 +584,7 @@ class AppMonitor:
             daemon=False,
         )
         self._thread.start()
-        log.info("Tracking started (foreground-only, idle-aware)")
+        log.info("Tracking started (foreground-only)")
 
     def stop(self) -> None:
         """Stop tracking, flush all data, finalize open sessions."""
@@ -683,7 +637,6 @@ class AppMonitor:
                     "duration_min":   round(active_secs / 60, 2),
                     "duration_fmt":   _fmt_mins(active_secs / 60),
                     "is_foreground":  is_fg,          # ✅ NEW
-                    "user_idle":      self._is_idle,  # ✅ NEW
                 })
         return sorted(out, key=lambda x: x["duration_min"], reverse=True)
 
@@ -756,7 +709,6 @@ class AppMonitor:
                 'active_count':      len(self._active),
                 'completed_count':   len(self._done),
                 'foreground_app':    self._current_foreground,  # ✅ NEW
-                'user_idle':         self._is_idle,              # ✅ NEW
                 'error_summary':     self.get_error_summary(),
                 'supabase_available': self._cloud.available,
                 'timestamp':         datetime.now().isoformat(),
@@ -771,38 +723,27 @@ class AppMonitor:
         Background thread — runs every POLL_INTERVAL seconds.
 
         ✅ NEW LOGIC each iteration:
-          1. Check user idle time via GetLastInputInfo.
-          2. Identify the foreground app via GetForegroundWindow.
-          3. If user is NOT idle AND foreground app is valid:
-               a. Create a session for that app if not yet seen.
-               b. Add POLL_INTERVAL seconds to that app's active_seconds.
-               c. Refresh its window title.
-          4. If user IS idle: skip time accumulation entirely.
-          5. Auto-save to Supabase every AUTO_SAVE_SECS.
+            1. Identify the foreground app via GetForegroundWindow.
+            2. If foreground app is valid:
+                a. Create a session for that app if not yet seen.
+                b. Add POLL_INTERVAL seconds to that app's active_seconds.
+                c. Refresh its window title.
+            3. Auto-save to Supabase every AUTO_SAVE_SECS.
         """
         last_save = time.monotonic()
 
         while self._running:
             try:
-                # ── Step 1: Check idle status ─────────────────────────────
-                idle_secs = get_idle_seconds()
-                user_is_idle = idle_secs >= IDLE_THRESHOLD_SECS
-
-                # ── Step 2: Get foreground app ────────────────────────────
+                # ── Step 1: Get foreground app ────────────────────────────
                 fg_app   = get_foreground_app()
                 fg_title = get_foreground_title() if fg_app else ""
 
                 with self._lock:
                     # Store for live_apps() / get_track_status()
                     self._current_foreground = fg_app
-                    self._is_idle = user_is_idle
 
-                    if user_is_idle:
-                        # ── IDLE: log once when idle begins, skip time ────
-                        pass   # no active time credited to any app
-
-                    elif fg_app and fg_app not in _IGNORE:
-                        # ── ACTIVE: credit time to foreground app ─────────
+                    if fg_app and fg_app not in _IGNORE:
+                        # Credit time to foreground app
 
                         # Create session on first encounter
                         if fg_app not in self._active:
@@ -944,7 +885,6 @@ class AppMonitor:
         print(f"  User       : {self.user_login}  ({self.user_email})")
         print(f"  Session    : {self.session_id}")
         print(f"  Generated  : {datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}")
-        print(f"  Idle limit : {IDLE_THRESHOLD_SECS}s (time beyond this not counted)")
         print(f"  {'─' * W}")
 
         if self._cloud.available:
@@ -1008,9 +948,7 @@ How it works (updated)
   * Only the app the user is ACTIVELY FOCUSED ON is tracked.
   * Background processes (chrome.exe, explorer.exe, mongod.exe, etc.)
     that are not in the foreground accumulate ZERO active time.
-  * If the user is idle for more than IDLE_THRESHOLD_SECS (default 120s),
-    no app gets time credited — even the foreground one.
-  * Time shown in reports = real human-at-keyboard focus time only.
+    * Time shown in reports = foreground focus time only.
 
 .env keys
 ---------
@@ -1036,10 +974,9 @@ if __name__ == "__main__":
             break
 
     print("=" * 60)
-    print("  DEVELOPER ACTIVITY TRACKER  (foreground + idle-aware)")
+    print("  DEVELOPER ACTIVITY TRACKER  (foreground-only)")
     print("=" * 60)
     print(f"  Monitoring for {duration} seconds.")
-    print(f"  Idle threshold: {IDLE_THRESHOLD_SECS}s")
     print("  Only apps you ACTIVELY USE are counted.\n")
 
     monitor = AppMonitor()
