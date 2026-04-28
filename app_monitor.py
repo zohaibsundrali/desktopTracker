@@ -501,6 +501,98 @@ class CloudDB:
                                 f'Failed to sync {len(pending)} app sessions after {MAX_RETRIES} attempts')
         return 0
 
+    def save_live_snapshot(self,
+                           active_sessions: List[AppSession],
+                           user_login: str, user_email: str, session_id: str,
+                           error_tracker: Optional['ErrorTracker'] = None,
+                           table_name: str = "app_usage") -> int:
+        """Persist a point-in-time snapshot of *currently active* sessions.
+
+        This is used for near-real-time dashboards: every interval we insert one
+        row per tracked app containing the latest accumulated active_seconds.
+
+        Notes:
+        - Does NOT mark AppSession.saved_cloud (these are not final sessions).
+        - Uses the same schema as the app_usage table.
+        - If the schema differs (e.g. missing user_login), we retry without it.
+        """
+        if not self.available:
+            return 0
+
+        if not active_sessions:
+            return 0
+
+        now = datetime.now()
+
+        records = []
+        for s in active_sessions:
+            try:
+                if not s.app_name or not s.start_time:
+                    continue
+                active_secs = float(getattr(s, "active_seconds", 0.0) or 0.0)
+                # Skip noise: never-seen / zero-duration apps
+                if active_secs <= 0:
+                    continue
+                records.append({
+                    "user_login":       user_login,
+                    "user_email":       user_email,
+                    "session_id":       session_id,
+                    "app_name":         s.app_name,
+                    "app_name_raw":     s.app_name_raw,
+                    "window_title":     s.window_title,
+                    "start_time":       s.start_time.isoformat(),
+                    # Snapshot semantics: end_time is "now".
+                    "end_time":         now.isoformat(),
+                    "duration_seconds": round(active_secs, 2),
+                    "duration_minutes": round(active_secs / 60.0, 4),
+                })
+            except Exception:
+                continue
+
+        if not records:
+            return 0
+
+        # Like save(): support older schemas without user_login.
+        if not self._has_user_login:
+            for r in records:
+                r.pop("user_login", None)
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                resp = self._client.table(table_name).insert(records).execute()
+
+                if getattr(resp, "data", None):
+                    if error_tracker:
+                        error_tracker.log_supabase_success(len(records))
+                    else:
+                        log.info(f"Supabase: live snapshot synced {len(records)} row(s)")
+                    return len(records)
+
+                if attempt < MAX_RETRIES:
+                    wait_time = RETRY_BACKOFF ** attempt
+                    time.sleep(wait_time)
+                    continue
+                return 0
+
+            except Exception as exc:
+                err = str(exc)
+                if "PGRST204" in err and "user_login" in err and self._has_user_login:
+                    self._has_user_login = False
+                    for r in records:
+                        r.pop("user_login", None)
+                    continue
+                if attempt < MAX_RETRIES:
+                    wait_time = RETRY_BACKOFF ** attempt
+                    time.sleep(wait_time)
+                    continue
+                if error_tracker:
+                    error_tracker.log_supabase_failure(
+                        [r.get("app_name", "") for r in records],
+                        f"Live snapshot error: {err[:80]}", attempt)
+                else:
+                    log.debug(f"Live snapshot insert failed: {err}")
+                return 0
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  CORE MONITOR
@@ -538,7 +630,8 @@ class AppMonitor:
     apps    = monitor.live_apps()
     """
 
-    def __init__(self, user_email: Optional[str] = None, pause_ctrl: Optional[object] = None):
+    def __init__(self, user_email: Optional[str] = None, pause_ctrl: Optional[object] = None,
+                 upload_interval_seconds: float = AUTO_SAVE_SECS):
         self.user_login: str = getpass.getuser()
         self.user_email: str = (
             user_email
@@ -551,6 +644,13 @@ class AppMonitor:
         # When provided, the polling loop blocks during pause and skips any
         # background auto-save / flushing work.
         self.pause_ctrl = pause_ctrl
+
+        # Live snapshot upload interval (seconds). Defaults to 60s so app usage
+        # behaves like the mouse tracker (periodic persistence).
+        try:
+            self._upload_interval_seconds: float = float(upload_interval_seconds)
+        except Exception:
+            self._upload_interval_seconds = float(AUTO_SAVE_SECS)
 
         self._running   = False
         self._lock      = threading.Lock()
@@ -736,6 +836,7 @@ class AppMonitor:
             3. Auto-save to Supabase every AUTO_SAVE_SECS.
         """
         last_save = time.monotonic()
+        last_live = time.monotonic()
 
         while self._running:
             try:
@@ -784,6 +885,12 @@ class AppMonitor:
                         self._flush()
                         last_save = time.monotonic()
 
+                # ── Live snapshot (near-real-time persistence) ─────────────
+                if time.monotonic() - last_live >= self._upload_interval_seconds:
+                    if not (ctrl is not None and getattr(ctrl, "is_paused", False)):
+                        self._flush_live_snapshot()
+                        last_live = time.monotonic()
+
             except Exception as exc:
                 log.error("Poll loop error: %s", exc, exc_info=True)
 
@@ -802,6 +909,29 @@ class AppMonitor:
                 step = 0.2 if remaining > 0.2 else remaining
                 time.sleep(step)
                 remaining -= step
+
+    def _flush_live_snapshot(self) -> None:
+        """Insert a point-in-time snapshot of currently active app sessions."""
+        if not self._cloud.available:
+            return
+
+        with self._lock:
+            # Copy references quickly under lock; we only read fields.
+            active_sessions = list(self._active.values())
+            user_login      = self.user_login
+            user_email      = self.user_email
+            session_id      = self.session_id
+            error_tracker   = self._error_tracker
+
+        # Insert outside lock.
+        self._cloud.save_live_snapshot(
+            active_sessions,
+            user_login=user_login,
+            user_email=user_email,
+            session_id=session_id,
+            error_tracker=error_tracker,
+            table_name="app_usage",
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     #  SESSION HELPERS  (all called under self._lock)
