@@ -538,7 +538,7 @@ class AppMonitor:
     apps    = monitor.live_apps()
     """
 
-    def __init__(self, user_email: Optional[str] = None):
+    def __init__(self, user_email: Optional[str] = None, pause_ctrl: Optional[object] = None):
         self.user_login: str = getpass.getuser()
         self.user_email: str = (
             user_email
@@ -546,6 +546,11 @@ class AppMonitor:
             or f"{self.user_login}@{_get_hostname()}"
         )
         self.session_id: str = str(uuid.uuid4())
+
+        # Optional shared PauseController (pause_controller.PauseController).
+        # When provided, the polling loop blocks during pause and skips any
+        # background auto-save / flushing work.
+        self.pause_ctrl = pause_ctrl
 
         self._running   = False
         self._lock      = threading.Lock()
@@ -734,6 +739,13 @@ class AppMonitor:
 
         while self._running:
             try:
+                # Global pause gate: block here while paused.
+                ctrl = getattr(self, "pause_ctrl", None)
+                wait = getattr(ctrl, "wait_if_paused", None) if ctrl is not None else None
+                if callable(wait):
+                    if not wait():
+                        return
+
                 # ── Step 1: Get foreground app ────────────────────────────
                 fg_app   = get_foreground_app()
                 fg_title = get_foreground_title() if fg_app else ""
@@ -767,13 +779,29 @@ class AppMonitor:
 
                 # ── Auto-save ─────────────────────────────────────────────
                 if time.monotonic() - last_save >= AUTO_SAVE_SECS:
-                    self._flush()
-                    last_save = time.monotonic()
+                    # Hard guarantee: never flush/save while paused.
+                    if not (ctrl is not None and getattr(ctrl, "is_paused", False)):
+                        self._flush()
+                        last_save = time.monotonic()
 
             except Exception as exc:
                 log.error("Poll loop error: %s", exc, exc_info=True)
 
-            time.sleep(POLL_INTERVAL)
+            # Sleep in small chunks so pause/stop becomes responsive quickly.
+            remaining = POLL_INTERVAL
+            while self._running and remaining > 0:
+                ctrl = getattr(self, "pause_ctrl", None)
+                if ctrl is not None and getattr(ctrl, "is_paused", False):
+                    wait = getattr(ctrl, "wait_if_paused", None)
+                    if callable(wait) and not wait():
+                        return
+                    # After resume, restart the sleep window rather than
+                    # trying to "catch up".
+                    remaining = POLL_INTERVAL
+                    continue
+                step = 0.2 if remaining > 0.2 else remaining
+                time.sleep(step)
+                remaining -= step
 
     # ─────────────────────────────────────────────────────────────────────────
     #  SESSION HELPERS  (all called under self._lock)

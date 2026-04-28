@@ -441,6 +441,9 @@ class TimerTracker:
             for _ in range(INTERVAL):
                 if ctx.stop_event.is_set():
                     break
+                # Block cleanly while paused (no background wakeups).
+                if not ctx.pause_ctrl.wait_if_paused():
+                    return
                 time.sleep(1.0)
 
             if ctx.stop_event.is_set():
@@ -532,6 +535,7 @@ class TimerTracker:
         try:
             self.app_monitor = AppMonitor(
                 user_email=self.user_email,
+                pause_ctrl=ctx.pause_ctrl,
             )
             self.app_monitor.start()
             log.info("AppMonitor started")
@@ -594,6 +598,7 @@ class TimerTracker:
                     developer_id=self.user_id,
                     developer_email=self.user_email,
                     developer_username=self.user_email.split('@')[0] if self.user_email else None,
+                    pause_ctrl=ctx.pause_ctrl,
                 )
                 self.screenshot_capture.start()
                 log.info("ScreenshotCapture started")
