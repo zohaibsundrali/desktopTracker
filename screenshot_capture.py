@@ -100,6 +100,7 @@ class ScreenshotCapture:
         developer_id:       Optional[str] = None,
         developer_email:    Optional[str] = None,
         developer_username: Optional[str] = None,
+        pause_ctrl:          Optional[object] = None,
     ):
         self.interval_min = interval_min
         self.interval_max = interval_max
@@ -111,6 +112,11 @@ class ScreenshotCapture:
         self._developer_id       = developer_id       or DEVELOPER_ID
         self._developer_email    = developer_email    or DEVELOPER_EMAIL
         self._developer_username = developer_username or DEVELOPER_USERNAME
+
+        # Optional shared PauseController (pause_controller.PauseController).
+        # When provided, this capture loop will block during pause and will not
+        # upload/save any data while paused.
+        self.pause_ctrl = pause_ctrl
 
         self._screenshots: List[ScreenshotInfo] = []
         self._total   = 0
@@ -137,20 +143,39 @@ class ScreenshotCapture:
 
     def _loop(self):
         while self._running:
+            if not self._wait_if_paused():
+                return
             delay = random.randint(self.interval_min, self.interval_max)
             print(f"⏳ Next capture in {delay}s …")
             for _ in range(delay):
                 if not self._running:
                     return
+                if not self._wait_if_paused():
+                    return
                 time.sleep(1)
             if self._running:
                 self.capture()
+
+    def _wait_if_paused(self) -> bool:
+        """Block if paused; return False if the controller is stopped."""
+        ctrl = getattr(self, "pause_ctrl", None)
+        if ctrl is None:
+            return True
+        wait = getattr(ctrl, "wait_if_paused", None)
+        if callable(wait):
+            return bool(wait())
+        return not bool(getattr(ctrl, "is_paused", False))
 
     # ── single capture ────────────────────────────────────────────────────────
 
     def capture(self, annotation: str = "") -> Optional[ScreenshotInfo]:
         """Take one screenshot, upload to Supabase, and keep metadata in memory."""
         try:
+            # If paused/stopped, do nothing (no capture, no upload, no history writes).
+            # Important: do NOT block the caller here — just no-op.
+            if bool(getattr(self.pause_ctrl, "is_paused", False)) or bool(getattr(self.pause_ctrl, "is_stopped", False)):
+                return None
+
             raw: Image.Image = pyautogui.screenshot()
             w, h = raw.size
             ts = datetime.now()
@@ -179,6 +204,11 @@ class ScreenshotCapture:
                 height=h,
                 size_kb=size_kb,
             )
+
+            # If we were paused mid-capture, discard this screenshot and do not
+            # upload or store anything.
+            if bool(getattr(self.pause_ctrl, "is_paused", False)):
+                return None
 
             # Upload (non-blocking on failure)
             info.public_url = self._upload(info, image_bytes)
@@ -231,6 +261,10 @@ class ScreenshotCapture:
 
     def _upload(self, info: ScreenshotInfo, data: bytes) -> Optional[str]:
         """Upload bytes to Supabase Storage, then insert metadata row."""
+        # Hard guarantee: never upload/save while paused.
+        if bool(getattr(self.pause_ctrl, "is_paused", False)):
+            return None
+
         sb = _supabase_client()
         if sb is None:
             return None
