@@ -1,17 +1,3 @@
-# app_name_converter.py - Convert executable names to user-friendly names
-"""
-Application Name Converter
-
-Converts Windows executable filenames into user-friendly display names.
-Includes comprehensive mappings for common applications and intelligent
-fallback mechanisms for unknown executables.
-
-Examples:
-    vscode.exe → Visual Studio Code
-    photos.exe → Photos
-    wordpad.exe → WordPad
-    chrome.exe → Google Chrome
-"""
 
 from typing import Dict, Optional
 
@@ -134,6 +120,7 @@ class AppNameConverter:
         "services.msc": "Services",
         
         # ━━━━━━ COMMUNICATION ━━━━━━
+       
         "skype.exe": "Skype",
         "telegram.exe": "Telegram",
         "whatsapp.exe": "WhatsApp",
