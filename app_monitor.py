@@ -1,4 +1,4 @@
-# ── Standard library ──────────────────────────────────────────────────────────
+
 import ctypes
 import getpass
 import logging
@@ -10,25 +10,21 @@ import time
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
-# ── Local ─────────────────────────────────────────────────────────────────────
 from app_name_converter import AppNameConverter
-# ── Third-party ───────────────────────────────────────────────────────────────
 import psutil
 from dotenv import load_dotenv
 
-# ── Windows per-PID window title (pywin32) ───────────────────────────────────
 try:
     import win32gui
     import win32process
     _PLATFORM = "windows"
 except ImportError:
     try:
-        from Xlib import display as _xdisplay   # type: ignore
+        from Xlib import display as _xdisplay
         _PLATFORM = "linux"
     except ImportError:
         _PLATFORM = "other"
 
-# ── Supabase cloud storage ────────────────────────────────────────────────────
 try:
     from supabase import create_client, Client as _SupabaseClient
     _SUPABASE_OK = True
@@ -37,9 +33,6 @@ except ImportError:
 
 load_dotenv()
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  LOGGING  — suppress third-party HTTP noise; keep our own INFO lines clean
-# ─────────────────────────────────────────────────────────────────────────────
 for _lib in ("httpx", "httpcore", "postgrest", "hpack"):
     logging.getLogger(_lib).setLevel(logging.WARNING)
 
@@ -50,28 +43,13 @@ logging.basicConfig(
 )
 log = logging.getLogger("app_monitor")
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  CONSTANTS
-# ─────────────────────────────────────────────────────────────────────────────
-POLL_INTERVAL   = 2.0    # seconds between process scans
-AUTO_SAVE_SECS  = 60.0   # auto-flush to Supabase every N seconds
-MAX_RETRIES     = 3      # maximum retry attempts for failed uploads
-RETRY_BACKOFF   = 2.0    # exponential backoff multiplier (2s, 4s, 8s)
+POLL_INTERVAL   = 2.0
+AUTO_SAVE_SECS  = 60.0
+MAX_RETRIES     = 3
+RETRY_BACKOFF   = 2.0
 
 
 def get_foreground_app() -> Optional[str]:
-    """
-    Return the normalized process name (e.g. 'chrome.exe') of the window
-    currently in the foreground (the one the user is looking at / typing in).
-
-    Returns None if:
-      - Not on Windows
-      - No foreground window found
-      - Process lookup fails (race condition — process just exited)
-
-    This is the KEY function that ensures we only track apps the user
-    is ACTIVELY using, not every process running in the background.
-    """
     if _PLATFORM != "windows":
         return None
     try:
@@ -89,7 +67,6 @@ def get_foreground_app() -> Optional[str]:
 
 
 def get_foreground_title() -> str:
-    """Return the window title of the current foreground window."""
     if _PLATFORM != "windows":
         return ""
     try:
@@ -99,25 +76,15 @@ def get_foreground_title() -> str:
         return ""
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  ERROR TRACKING & ALERTING SYSTEM
-# ═════════════════════════════════════════════════════════════════════════════
-
 class ErrorTracker:
-    """
-    Centralized error logging and alerting system.
-    Tracks errors, failures, and alerts for debugging and monitoring.
-    """
-
     def __init__(self):
         self.errors: List[Dict] = []
-        self.failed_apps: Dict[str, int] = {}  # app_name -> error_count
+        self.failed_apps: Dict[str, int] = {}
         self.supabase_failures: List[Dict] = []
         self.lock = threading.Lock()
 
     def log_error(self, error_type: str, app_name: str = None,
                   message: str = "", details: str = ""):
-        """Log an error with context."""
         with self.lock:
             error_entry = {
                 'timestamp': datetime.now().isoformat(),
@@ -139,7 +106,6 @@ class ErrorTracker:
                 log.debug(f"  Details: {details}")
 
     def log_supabase_failure(self, app_names: List[str], error: str, attempt: int = 1):
-        """Log Supabase sync failure."""
         with self.lock:
             failure = {
                 'timestamp': datetime.now().isoformat(),
@@ -152,11 +118,9 @@ class ErrorTracker:
             log.warning(f"Supabase sync failed (attempt {attempt}): {len(app_names)} apps")
 
     def log_supabase_success(self, count: int):
-        """Log successful Supabase sync."""
         log.info(f"Supabase: synced {count} app session(s)")
 
     def get_summary(self) -> Dict:
-        """Get error summary for reporting."""
         with self.lock:
             return {
                 'total_errors': len(self.errors),
@@ -166,31 +130,21 @@ class ErrorTracker:
             }
 
     def alert(self, severity: str, message: str):
-        """
-        Send alert for critical issues.
-        Severity: 'critical', 'warning', 'info'
-        """
         timestamp = datetime.now().strftime('%H:%M:%S')
         alert_symbol = '🔴' if severity == 'critical' else '🟡' if severity == 'warning' else 'ℹ️'
         print(f"  {alert_symbol} ALERT [{severity.upper()}] {timestamp}: {message}", flush=True)
         log.warning(f"ALERT [{severity}]: {message}")
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  PROCESS IGNORE LIST
-# ═════════════════════════════════════════════════════════════════════════════
 _IGNORE: frozenset = frozenset({
-    # Windows core
     "system idle process", "system", "registry", "secure system",
     "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
     "services.exe", "lsass.exe", "lsaiso.exe",
-    # Windows shell / session infrastructure
     "svchost.exe", "dllhost.exe", "conhost.exe", "fontdrvhost.exe",
     "sihost.exe", "ctfmon.exe", "dashost.exe", "dwm.exe",
     "taskhostw.exe", "runtimebroker.exe",
     "startmenuexperiencehost.exe", "shellexperiencehost.exe",
     "textinputhost.exe", "lockapp.exe", "logonui.exe", "userinit.exe",
-    # Background services
     "spoolsv.exe", "splwow64.exe", "sppsvc.exe",
     "searchindexer.exe", "searchprotocolhost.exe", "searchfilterhost.exe",
     "wmiprvse.exe", "wmiapsrv.exe",
@@ -198,18 +152,13 @@ _IGNORE: frozenset = frozenset({
     "msmpeng.exe", "nissrv.exe",
     "securityhealthservice.exe", "securityhealthsystray.exe",
     "smartscreen.exe", "sgrmbroker.exe", "sgrmagent.exe",
-    # OEM agents
     "intelsoftwareassetmanagerservice.exe",
     "intelcphdcpsvcd.exe", "intelcphecpservice.exe",
-    # Cloud sync daemons (background)
     "filecoauth.exe", "onedrive.exe",
-    # Windows Store / WinRT infrastructure
     "wwahost.exe", "applicationframehost.exe",
     "backgroundtaskhost.exe", "browser_broker.exe",
     "microsoftedgeupdate.exe",
-    # Installers
     "msiexec.exe", "trustedinstaller.exe", "tiworker.exe",
-    # More service processes
     "rundll32.exe", "taskhost.exe", "taskeng.exe", "schtasks.exe",
     "regsvcs.exe", "regasm.exe", "cscript.exe", "wscript.exe",
     "themeserver.exe", "themes.exe", "mpnotify.exe",
@@ -223,27 +172,39 @@ _IGNORE: frozenset = frozenset({
     "nvvk32wrap.exe", "igfxcui.exe",
     "mcshield.exe", "avgidsagent.exe", "avguard.exe",
     "taskmgr.exe",
-    # Linux kernel threads
     "kthreadd", "ksoftirqd", "migration",
     "rcu_bh", "rcu_sched", "kworker", "kswapd",
 })
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  SUPABASE SCHEMA
-#  Run ONCE in Supabase SQL Editor.  python app_monitor.py --schema
-# ═════════════════════════════════════════════════════════════════════════════
+_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS app_usage (
+    id                BIGSERIAL PRIMARY KEY,
+    user_login        TEXT,
+    user_email        TEXT,
+    session_id        TEXT        NOT NULL,
+    app_name          TEXT        NOT NULL,
+    app_name_raw      TEXT        NOT NULL,
+    window_title      TEXT,
+    start_time        TIMESTAMPTZ NOT NULL,
+    end_time          TIMESTAMPTZ,
+    duration_seconds  NUMERIC(10, 2),
+    duration_minutes  NUMERIC(10, 4),
+    created_at        TIMESTAMPTZ DEFAULT NOW()
+);
 
+ALTER TABLE app_usage
+    ADD CONSTRAINT IF NOT EXISTS app_usage_session_app_unique
+    UNIQUE (session_id, app_name_raw);
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  WINDOW TITLE HELPERS
-# ═════════════════════════════════════════════════════════════════════════════
+CREATE INDEX IF NOT EXISTS idx_app_usage_session_id  ON app_usage (session_id);
+CREATE INDEX IF NOT EXISTS idx_app_usage_user_email  ON app_usage (user_email);
+CREATE INDEX IF NOT EXISTS idx_app_usage_app_name    ON app_usage (app_name);
+CREATE INDEX IF NOT EXISTS idx_app_usage_start_time  ON app_usage (start_time);
+"""
+
 
 def _pid_title_map() -> Dict[int, str]:
-    """
-    Build {pid: window_title} for every visible, titled desktop window.
-    Returns an empty dict on Linux / if pywin32 is not installed.
-    """
     mapping: Dict[int, str] = {}
     if _PLATFORM != "windows":
         return mapping
@@ -270,7 +231,6 @@ def _pid_title_map() -> Dict[int, str]:
 
 
 def _linux_title() -> str:
-    """Return the active window title on Linux/X11."""
     try:
         d = _xdisplay.Display()
         win = d.get_input_focus().focus
@@ -280,34 +240,20 @@ def _linux_title() -> str:
         return ""
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  DATA MODEL
-# ═════════════════════════════════════════════════════════════════════════════
-
 class AppSession:
-    """
-    Represents one foreground-focus usage session for a single application.
-
-    ✅ CHANGED vs original:
-      - duration_seconds now stores ACTIVE seconds only (time user was
-        actually focused on this app and not idle), not wall-clock time.
-      - active_seconds accumulates incrementally each poll tick.
-      - finalize() uses accumulated active_seconds, not end-start delta.
-    """
-
     __slots__ = (
         "app_name", "app_name_raw", "window_title", "start_time", "end_time",
         "active_seconds", "duration_seconds", "duration_minutes", "saved_cloud",
     )
-    
+
     def __init__(self, app_name_raw: str, window_title: str, start_time: datetime):
         if not app_name_raw or not isinstance(app_name_raw, str):
             raise ValueError(f"Invalid app_name: must be non-empty string, got {app_name_raw!r}")
         if not start_time or not isinstance(start_time, datetime):
             raise ValueError(f"Invalid start_time: must be datetime, got {start_time!r}")
 
-        self.app_name_raw      = app_name_raw.strip().lower()          # e.g. "chrome.exe"
-        self.app_name          = AppNameConverter.convert(app_name_raw) # e.g. "Google Chrome"
+        self.app_name_raw      = app_name_raw.strip().lower()
+        self.app_name          = AppNameConverter.convert(app_name_raw)
         self.window_title      = window_title.strip() if window_title else ""
         self.start_time        = start_time
         self.end_time: Optional[datetime] = None
@@ -317,13 +263,10 @@ class AppSession:
         self.saved_cloud       = False
 
     def add_active_time(self, seconds: float) -> None:
-        """Add incremental active (non-idle, in-foreground) seconds."""
         self.active_seconds += seconds
 
     def finalize(self, end_time: datetime) -> None:
-        """Close this session using accumulated active time."""
         self.end_time         = end_time
-        # ✅ Use active_seconds (focus + non-idle time), not wall-clock delta
         self.duration_seconds = round(self.active_seconds, 2)
         self.duration_minutes = round(self.active_seconds / 60, 4)
 
@@ -332,8 +275,8 @@ class AppSession:
             "user_login":       user_login,
             "user_email":       user_email,
             "session_id":       session_id,
-            "app_name":         self.app_name,        # "Google Chrome"
-            "app_name_raw":     self.app_name_raw,    # "chrome.exe"
+            "app_name":         self.app_name,
+            "app_name_raw":     self.app_name_raw,
             "window_title":     self.window_title,
             "start_time":       self.start_time.isoformat(),
             "end_time":         self.end_time.isoformat() if self.end_time else None,
@@ -349,18 +292,7 @@ class AppSession:
         )
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  CLOUD DATABASE  (Supabase)
-# ═════════════════════════════════════════════════════════════════════════════
-
 class CloudDB:
-    """
-    Supabase storage layer — the sole persistence backend.
-
-    Requires SUPABASE_URL and SUPABASE_KEY to be set in .env.
-    All tracking data is written exclusively to Supabase app_usage table.
-    """
-
     def __init__(self):
         self._client = None
         self._has_user_login: bool = True
@@ -388,10 +320,6 @@ class CloudDB:
     def save(self, sessions: List[AppSession],
              user_login: str, user_email: str, session_id: str,
              error_tracker: Optional['ErrorTracker'] = None) -> int:
-        """
-        Batch-INSERT pending sessions to Supabase app_usage table with retry logic.
-        Returns number of rows successfully synced.
-        """
         if not self.available:
             if error_tracker:
                 error_tracker.alert('critical', 'Supabase client not available')
@@ -506,16 +434,6 @@ class CloudDB:
                            user_login: str, user_email: str, session_id: str,
                            error_tracker: Optional['ErrorTracker'] = None,
                            table_name: str = "app_usage") -> int:
-        """Persist a point-in-time snapshot of *currently active* sessions.
-
-        This is used for near-real-time dashboards: every interval we insert one
-        row per tracked app containing the latest accumulated active_seconds.
-
-        Notes:
-        - Does NOT mark AppSession.saved_cloud (these are not final sessions).
-        - Uses the same schema as the app_usage table.
-        - If the schema differs (e.g. missing user_login), we retry without it.
-        """
         if not self.available:
             return 0
 
@@ -523,16 +441,18 @@ class CloudDB:
             return 0
 
         now = datetime.now()
-
         records = []
+
         for s in active_sessions:
             try:
                 if not s.app_name or not s.start_time:
                     continue
+
                 active_secs = float(getattr(s, "active_seconds", 0.0) or 0.0)
-                # Skip noise: never-seen / zero-duration apps
+
                 if active_secs <= 0:
                     continue
+
                 records.append({
                     "user_login":       user_login,
                     "user_email":       user_email,
@@ -541,7 +461,6 @@ class CloudDB:
                     "app_name_raw":     s.app_name_raw,
                     "window_title":     s.window_title,
                     "start_time":       s.start_time.isoformat(),
-                    # Snapshot semantics: end_time is "now".
                     "end_time":         now.isoformat(),
                     "duration_seconds": round(active_secs, 2),
                     "duration_minutes": round(active_secs / 60.0, 4),
@@ -552,84 +471,58 @@ class CloudDB:
         if not records:
             return 0
 
-        # Like save(): support older schemas without user_login.
         if not self._has_user_login:
             for r in records:
                 r.pop("user_login", None)
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                resp = self._client.table(table_name).insert(records).execute()
+                resp = (
+                    self._client
+                    .table(table_name)
+                    .upsert(records, on_conflict="session_id,app_name_raw")
+                    .execute()
+                )
 
                 if getattr(resp, "data", None):
                     if error_tracker:
                         error_tracker.log_supabase_success(len(records))
                     else:
-                        log.info(f"Supabase: live snapshot synced {len(records)} row(s)")
+                        log.info(f"Supabase: live snapshot upserted {len(records)} row(s)")
                     return len(records)
 
                 if attempt < MAX_RETRIES:
                     wait_time = RETRY_BACKOFF ** attempt
                     time.sleep(wait_time)
                     continue
+
                 return 0
 
             except Exception as exc:
                 err = str(exc)
+
                 if "PGRST204" in err and "user_login" in err and self._has_user_login:
                     self._has_user_login = False
                     for r in records:
                         r.pop("user_login", None)
                     continue
+
                 if attempt < MAX_RETRIES:
                     wait_time = RETRY_BACKOFF ** attempt
                     time.sleep(wait_time)
                     continue
+
                 if error_tracker:
                     error_tracker.log_supabase_failure(
                         [r.get("app_name", "") for r in records],
                         f"Live snapshot error: {err[:80]}", attempt)
                 else:
-                    log.debug(f"Live snapshot insert failed: {err}")
+                    log.debug(f"Live snapshot upsert failed: {err}")
+
                 return 0
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  CORE MONITOR
-# ═════════════════════════════════════════════════════════════════════════════
-
 class AppMonitor:
-    """
-    Orchestrates foreground-only developer activity tracking.
-
-     ✅ KEY CHANGES vs original:
-    ──────────────────────────────────────────────────────────────────────────
-    1. FOREGROUND-ONLY TRACKING
-       Only the app the user is actively looking at (GetForegroundWindow)
-       accumulates active time. Every other running process is ignored for
-       time counting. chrome.exe open in background? → 0 seconds counted.
-
-     2. INCREMENTAL TIME ACCUMULATION
-       Each poll tick adds exactly POLL_INTERVAL seconds to the foreground
-         app's active_seconds. This is far more accurate than
-       end_time - start_time which counts all background time.
-
-     3. SESSION CREATION (unchanged logic)
-       AppSession objects are still created per app, but only "open" when
-       we see the app in the foreground for the first time. Sessions are
-       kept open until the process exits or tracking stops, but their
-       duration only reflects real focus time.
-
-    Public API (unchanged)
-    ──────────────────────
-    monitor = AppMonitor()
-    monitor.start()
-    ...
-    monitor.stop()
-    summary = monitor.get_summary()
-    apps    = monitor.live_apps()
-    """
-
     def __init__(self, user_email: Optional[str] = None, pause_ctrl: Optional[object] = None,
                  upload_interval_seconds: float = AUTO_SAVE_SECS):
         self.user_login: str = getpass.getuser()
@@ -640,13 +533,8 @@ class AppMonitor:
         )
         self.session_id: str = str(uuid.uuid4())
 
-        # Optional shared PauseController (pause_controller.PauseController).
-        # When provided, the polling loop blocks during pause and skips any
-        # background auto-save / flushing work.
         self.pause_ctrl = pause_ctrl
 
-        # Live snapshot upload interval (seconds). Defaults to 60s so app usage
-        # behaves like the mouse tracker (periodic persistence).
         try:
             self._upload_interval_seconds: float = float(upload_interval_seconds)
         except Exception:
@@ -655,12 +543,13 @@ class AppMonitor:
         self._running   = False
         self._lock      = threading.Lock()
         self._thread: Optional[threading.Thread] = None
-        self._active:  Dict[str, AppSession] = {}   # app_name → open session
-        self._done:    List[AppSession]      = []   # finalized sessions
+        self._active:  Dict[str, AppSession] = {}
+        self._done:    List[AppSession]      = []
         self._last_save_time: float          = time.time()
 
-        # Track current foreground app for live_apps()
         self._current_foreground: Optional[str] = None
+        self._previous_foreground: Optional[str] = None
+        self._last_poll_time: float = time.time()
 
         self._cloud = CloudDB()
         self._error_tracker = ErrorTracker()
@@ -670,18 +559,14 @@ class AppMonitor:
             self.user_login, self.user_email, self.session_id,
         )
 
-    # ─────────────────────────────────────────────────────────────────────────
-    #  PUBLIC LIFECYCLE
-    # ─────────────────────────────────────────────────────────────────────────
-
     def start(self) -> None:
-        """Begin tracking. Only foreground app time is counted."""
         if self._running:
             log.warning("Already running — ignoring duplicate start()")
             return
 
-        time.sleep(1)  # Stabilize process list
+        time.sleep(1)
         self._running = True
+        self._last_poll_time = time.time()
 
         self._thread = threading.Thread(
             target=self._poll_loop,
@@ -689,10 +574,9 @@ class AppMonitor:
             daemon=False,
         )
         self._thread.start()
-        log.info("Tracking started (foreground-only)")
+        log.info("Tracking started (foreground-only, idle-filtered)")
 
     def stop(self) -> None:
-        """Stop tracking, flush all data, finalize open sessions."""
         if not self._running:
             log.warning("Not running — ignoring stop()")
             return
@@ -717,19 +601,7 @@ class AppMonitor:
 
         log.info("Stopped | session=%s", self.session_id)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    #  PUBLIC QUERY API
-    # ─────────────────────────────────────────────────────────────────────────
-
     def live_apps(self) -> List[Dict]:
-        """
-        Return live active-duration info for every app seen this session.
-
-        ✅ CHANGED: duration_min now reflects accumulated ACTIVE time only,
-        not wall-clock time since process was first seen.
-        Includes idle/foreground status for dashboard use.
-        """
-        now = datetime.now()
         with self._lock:
             out = []
             for name, sess in self._active.items():
@@ -741,15 +613,11 @@ class AppMonitor:
                     "started_at":     sess.start_time.strftime("%H:%M:%S"),
                     "duration_min":   round(active_secs / 60, 2),
                     "duration_fmt":   _fmt_mins(active_secs / 60),
-                    "is_foreground":  is_fg,          # ✅ NEW
+                    "is_foreground":  is_fg,
                 })
         return sorted(out, key=lambda x: x["duration_min"], reverse=True)
 
     def get_summary(self) -> Dict:
-        """
-        Return a structured dict summarizing the completed session.
-        Must be called AFTER stop().
-        """
         sessions = self._done
         if not sessions:
             return {
@@ -793,7 +661,6 @@ class AppMonitor:
             "generated_at": datetime.now().isoformat(),
         }
 
-    # Backwards-compat aliases
     def get_session_summary(self) -> Dict:
         return self.get_summary()
 
@@ -809,83 +676,82 @@ class AppMonitor:
     def get_track_status(self) -> Dict:
         with self._lock:
             return {
-                'running':           self._running,
-                'active_apps':       list(self._active.keys()),
-                'active_count':      len(self._active),
-                'completed_count':   len(self._done),
-                'foreground_app':    self._current_foreground,  # ✅ NEW
-                'error_summary':     self.get_error_summary(),
+                'running':            self._running,
+                'active_apps':        list(self._active.keys()),
+                'active_count':       len(self._active),
+                'completed_count':    len(self._done),
+                'foreground_app':     self._current_foreground,
+                'error_summary':      self.get_error_summary(),
                 'supabase_available': self._cloud.available,
-                'timestamp':         datetime.now().isoformat(),
+                'timestamp':          datetime.now().isoformat(),
             }
 
-    # ─────────────────────────────────────────────────────────────────────────
-    #  POLLING THREAD
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _poll_loop(self) -> None:
-        """
-        Background thread — runs every POLL_INTERVAL seconds.
-
-        ✅ NEW LOGIC each iteration:
-            1. Identify the foreground app via GetForegroundWindow.
-            2. If foreground app is valid:
-                a. Create a session for that app if not yet seen.
-                b. Add POLL_INTERVAL seconds to that app's active_seconds.
-                c. Refresh its window title.
-            3. Auto-save to Supabase every AUTO_SAVE_SECS.
-        """
         last_save = time.monotonic()
         last_live = time.monotonic()
 
         while self._running:
             try:
-                # Global pause gate: block here while paused.
                 ctrl = getattr(self, "pause_ctrl", None)
                 wait = getattr(ctrl, "wait_if_paused", None) if ctrl is not None else None
                 if callable(wait):
                     if not wait():
                         return
 
-                # ── Step 1: Get foreground app ────────────────────────────
                 fg_app   = get_foreground_app()
                 fg_title = get_foreground_title() if fg_app else ""
+                
+                current_time = time.time()
+                time_delta = current_time - self._last_poll_time
+                self._last_poll_time = current_time
 
                 with self._lock:
-                    # Store for live_apps() / get_track_status()
                     self._current_foreground = fg_app
 
                     if fg_app and fg_app not in _IGNORE:
-                        # Credit time to foreground app
+                        if (self._previous_foreground and 
+                            self._previous_foreground != fg_app and 
+                            self._previous_foreground in self._active):
+                            log.debug(
+                                f"App switch: {self._previous_foreground} → {fg_app} "
+                                f"(credited {time_delta:.2f}s to {self._previous_foreground})"
+                            )
+                            self._active[self._previous_foreground].add_active_time(time_delta)
 
-                        # Create session on first encounter
                         if fg_app not in self._active:
                             self._open_session(fg_app, fg_title)
 
-                        # Accumulate active focus time
                         if fg_app in self._active:
-                            self._active[fg_app].add_active_time(POLL_INTERVAL)
+                            if self._previous_foreground == fg_app or fg_app not in self._active:
+                                self._active[fg_app].add_active_time(time_delta)
+                            else:
+                                pass
 
-                            # Refresh title while it's in focus
-                            if fg_title and not self._active[fg_app].window_title:
-                                self._active[fg_app].window_title = fg_title
-                            elif fg_title and len(fg_title) > len(
-                                    self._active[fg_app].window_title):
-                                # Update with more descriptive title
+                            current_title = self._active[fg_app].window_title
+                            if fg_title and len(fg_title) > len(current_title):
                                 self._active[fg_app].window_title = fg_title
 
-                    # ── Detect closed processes ───────────────────────────
-                    # Finalize sessions for apps whose process has exited
+                        self._previous_foreground = fg_app
+                    else:
+                        self._previous_foreground = None
+
+                        if (self._previous_foreground and 
+                            self._previous_foreground in self._active and
+                            self._previous_foreground not in _IGNORE):
+                            self._active[self._previous_foreground].add_active_time(time_delta)
+                            log.debug(
+                                f"Lost focus: {self._previous_foreground} "
+                                f"(credited {time_delta:.2f}s)"
+                            )
+                            self._previous_foreground = None
+
                     self._detect_closed_processes()
 
-                # ── Auto-save ─────────────────────────────────────────────
                 if time.monotonic() - last_save >= AUTO_SAVE_SECS:
-                    # Hard guarantee: never flush/save while paused.
                     if not (ctrl is not None and getattr(ctrl, "is_paused", False)):
                         self._flush()
                         last_save = time.monotonic()
 
-                # ── Live snapshot (near-real-time persistence) ─────────────
                 if time.monotonic() - last_live >= self._upload_interval_seconds:
                     if not (ctrl is not None and getattr(ctrl, "is_paused", False)):
                         self._flush_live_snapshot()
@@ -894,7 +760,6 @@ class AppMonitor:
             except Exception as exc:
                 log.error("Poll loop error: %s", exc, exc_info=True)
 
-            # Sleep in small chunks so pause/stop becomes responsive quickly.
             remaining = POLL_INTERVAL
             while self._running and remaining > 0:
                 ctrl = getattr(self, "pause_ctrl", None)
@@ -902,28 +767,23 @@ class AppMonitor:
                     wait = getattr(ctrl, "wait_if_paused", None)
                     if callable(wait) and not wait():
                         return
-                    # After resume, restart the sleep window rather than
-                    # trying to "catch up".
                     remaining = POLL_INTERVAL
                     continue
-                step = 0.2 if remaining > 0.2 else remaining
+                step = min(0.2, remaining)
                 time.sleep(step)
                 remaining -= step
 
     def _flush_live_snapshot(self) -> None:
-        """Insert a point-in-time snapshot of currently active app sessions."""
         if not self._cloud.available:
             return
 
         with self._lock:
-            # Copy references quickly under lock; we only read fields.
             active_sessions = list(self._active.values())
             user_login      = self.user_login
             user_email      = self.user_email
             session_id      = self.session_id
             error_tracker   = self._error_tracker
 
-        # Insert outside lock.
         self._cloud.save_live_snapshot(
             active_sessions,
             user_login=user_login,
@@ -933,12 +793,7 @@ class AppMonitor:
             table_name="app_usage",
         )
 
-    # ─────────────────────────────────────────────────────────────────────────
-    #  SESSION HELPERS  (all called under self._lock)
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _open_session(self, app_name: str, window_title: str) -> None:
-        """Create and register a new AppSession for an app entering focus."""
         try:
             session = AppSession(app_name, window_title, datetime.now())
             self._active[app_name] = session
@@ -949,12 +804,6 @@ class AppMonitor:
                 'Failed to create session', str(e))
 
     def _detect_closed_processes(self) -> None:
-        """
-        Finalize sessions for tracked processes that are no longer running.
-
-        This does a lightweight psutil check only for apps we are already
-        tracking — not a full process scan — keeping overhead minimal.
-        """
         now    = datetime.now()
         closed = []
 
@@ -985,10 +834,6 @@ class AppMonitor:
                     'Failed to finalize session', str(e))
 
     def _finalize_all(self) -> None:
-        """
-        Finalize every still-open session when tracking stops.
-        Called under self._lock AFTER the polling thread is joined.
-        """
         now = datetime.now()
         for app_name in list(self._active.keys()):
             sess = self._active.pop(app_name)
@@ -998,24 +843,14 @@ class AppMonitor:
             log.warning(f"{len(self._active)} apps still in _active after finalization")
             self._active.clear()
 
-    # ─────────────────────────────────────────────────────────────────────────
-    #  STORAGE
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _flush(self) -> None:
-        """Persist all unsaved completed sessions to Supabase."""
         self._cloud.save(
             self._done, self.user_login,
             self.user_email, self.session_id,
             error_tracker=self._error_tracker,
         )
 
-    # ─────────────────────────────────────────────────────────────────────────
-    #  CONSOLE REPORT
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _print_report(self) -> None:
-        """Print the end-of-session activity report."""
         sessions = self._done
         if not sessions:
             print("\n  No applications were tracked this session.", flush=True)
@@ -1071,10 +906,6 @@ class AppMonitor:
         print(f"  {'═' * W}\n")
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  UTILITY FUNCTIONS
-# ═════════════════════════════════════════════════════════════════════════════
-
 def _get_hostname() -> str:
     try:
         return socket.gethostname()
@@ -1083,46 +914,25 @@ def _get_hostname() -> str:
 
 
 def _fmt_mins(minutes: float) -> str:
-    """Format a duration in minutes as '1h 23m' or '45m'."""
     total_m = int(minutes)
     h, m    = divmod(total_m, 60)
     return f"{h}h {m:02d}m" if h else f"{m}m"
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  ENTRY POINT
-# ═════════════════════════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    if "--schema" in sys.argv:
+        print("# Run this in Supabase SQL Editor to create/update the app_usage table.")
+        print(_SCHEMA_SQL)
+        sys.exit(0)
 
-def _print_usage() -> None:
-    print("""
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("""
 Usage
 -----
   python app_monitor.py              # track for 60 seconds (default)
   python app_monitor.py 120          # track for N seconds
   python app_monitor.py --schema     # print Supabase DDL and exit
-
-How it works (updated)
------------------------
-  * Only the app the user is ACTIVELY FOCUSED ON is tracked.
-  * Background processes (chrome.exe, explorer.exe, mongod.exe, etc.)
-    that are not in the foreground accumulate ZERO active time.
-    * Time shown in reports = foreground focus time only.
-
-.env keys
----------
-  SUPABASE_URL  = https://your-project.supabase.co
-  SUPABASE_KEY  = your-anon-key
-  USER_EMAIL    = you@company.com    # optional; auto-detected from OS if absent
-""")
-
-
-if __name__ == "__main__":
-    if "--schema" in sys.argv:
-        print("# Run this in Supabase SQL Editor to create the app_usage table.")
-        sys.exit(0)
-
-    if "--help" in sys.argv or "-h" in sys.argv:
-        _print_usage()
+        """)
         sys.exit(0)
 
     duration = 60
@@ -1144,3 +954,4 @@ if __name__ == "__main__":
         time.sleep(1)
 
     monitor.stop()
+    monitor._print_report()
