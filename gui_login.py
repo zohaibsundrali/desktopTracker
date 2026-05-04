@@ -24,7 +24,6 @@ from typing import Optional, Dict, Any, List
 
 import customtkinter as ctk
 from tkinter import messagebox, BooleanVar
-import tkinter as tk
 
 # Your existing backend modules (unchanged)
 from timer_tracker import TimerTracker
@@ -60,103 +59,50 @@ class RadialTimerWidget(ctk.CTkFrame):
     """
     def __init__(self, master, daily_goal_minutes: int = 360, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
+        # Keep the timer logic, but disable the radial progress visualization.
         self.goal_seconds = daily_goal_minutes * 60
         self.current_seconds = 0
 
-        # Canvas for smooth arc drawing
-        self.canvas = tk.Canvas(
+        # Circular container (no arcs/progress around it).
+        self.circle = ctk.CTkFrame(
             self,
-            bg=Colors.BG_SECONDARY,
-            highlightthickness=0,
             width=260,
-            height=260
+            height=260,
+            corner_radius=130,
+            fg_color=Colors.BG_SECONDARY,
         )
-        self.canvas.pack(pady=(10, 5))
+        self.circle.pack(pady=(10, 5))
+        self.circle.pack_propagate(False)
 
-        # Background track
-        self._draw_track()
-
-        # Central time label
+        # Central time label (digital only).
         self.time_label = ctk.CTkLabel(
-            self.canvas,
-            text="00:00",
+            self.circle,
+            text="00:00:00",
             font=ctk.CTkFont(size=44, weight="bold"),
-            text_color=Colors.ACCENT_BLUE
+            text_color=Colors.ACCENT_BLUE,
         )
         self.time_label.place(relx=0.5, rely=0.5, anchor="center")
 
-        self.progress_arc = None
-        self.pulse_animation_id = None
-
-    def _draw_track(self) -> None:
-        """Draw the subtle background arc."""
-        x, y = 30, 30
-        width, height = 200, 200
-        self.canvas.create_arc(
-            x, y, x + width, y + height,
-            start=90, extent=359.9,
-            style="arc", outline=Colors.BG_TERTIARY, width=12
-        )
-
     def update_progress(self, elapsed_seconds: float) -> None:
-        """Update the arc and time display based on elapsed session time."""
-        # Normalise to an integer second count for display/arc math
+        """Update the digital time display based on elapsed session time."""
+        # Normalise to an integer second count for display.
         elapsed_int = int(max(0, elapsed_seconds))
         self.current_seconds = elapsed_int
-        progress = min(elapsed_int / self.goal_seconds, 1.0)
-        extent = progress * 359.9
 
-        # Format time
+        # Format time (always show hours, minutes, seconds).
         hours = elapsed_int // 3600
         minutes = (elapsed_int % 3600) // 60
         seconds = elapsed_int % 60
-        if hours > 0:
-            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        else:
-            time_str = f"{minutes:02d}:{seconds:02d}"
+        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         self.time_label.configure(text=time_str)
 
-        # Colour gradient based on progress
-        if progress < 0.33:
-            color = Colors.ACCENT_GREEN
-        elif progress < 0.66:
-            color = Colors.ACCENT_BLUE
-        else:
-            color = Colors.ACCENT_PURPLE
-
-        # Delete old arc and draw new one
-        if self.progress_arc:
-            self.canvas.delete(self.progress_arc)
-        x, y = 30, 30
-        width, height = 200, 200
-        self.progress_arc = self.canvas.create_arc(
-            x, y, x + width, y + height,
-            start=90, extent=extent,
-            style="arc", outline=color, width=14
-        )
-
     def start_pulse(self) -> None:
-        """Brief pulse animation when timer starts."""
-        def _pulse(step=0):
-            if step > 5:
-                self.canvas.configure(bg=Colors.BG_SECONDARY)
-                return
-            # Very subtle brightness change
-            brightness = min(step * 10, 30)
-            hex_val = f"#{0x15 + brightness:02x}{0x1B + brightness:02x}{0x2E + brightness:02x}"
-            self.canvas.configure(bg=hex_val)
-            self.pulse_animation_id = self.after(60, _pulse, step + 1)
-        _pulse()
+        """No-op: radial pulse animation disabled."""
+        return
 
     def reset(self) -> None:
         """Clear timer display after session stop."""
-        if self.pulse_animation_id:
-            self.after_cancel(self.pulse_animation_id)
-        self.canvas.configure(bg=Colors.BG_SECONDARY)
-        self.time_label.configure(text="00:00")
-        if self.progress_arc:
-            self.canvas.delete(self.progress_arc)
-            self.progress_arc = None
+        self.time_label.configure(text="00:00:00")
 
 
 # ----------------------------------------------------------------------
@@ -561,7 +507,6 @@ class DashboardWindow:
                 if self.timer.start():
                     self.timer_running = True
                     self.timer_paused = False
-                    self.radial_timer.start_pulse()
                     msg = "● TRACKING ACTIVE"
                     def _ok():
                         if not self.app.winfo_exists():
