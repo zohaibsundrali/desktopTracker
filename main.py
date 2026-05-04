@@ -10,10 +10,6 @@ load_dotenv()
 # Check if Supabase credentials are set
 if not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_KEY"):
     print("❌ ERROR: Supabase credentials not found!")
-    print("Please create a .env file with:")
-    print("SUPABASE_URL=your_supabase_url")
-    print("SUPABASE_KEY=your_supabase_key")
-    print("\nOr set them as environment variables.")
     sys.exit(1)
 
 def main():
