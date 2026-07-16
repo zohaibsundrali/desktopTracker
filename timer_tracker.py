@@ -10,6 +10,7 @@ What changed from previous version:
     - _SessionContext now carries pause_ctrl alongside stop/pause events
 """
 
+import os
 import time
 import threading
 import logging
@@ -215,9 +216,19 @@ class TimerTracker:
 
         self._supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
 
+        # Local fallback queue for sessions that fail to upload (e.g. network loss).
+        self._pending_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), ".pending_sessions.jsonl"
+        )
+        self._pending_lock = threading.Lock()
+
         self._shutdown_event = threading.Event()
         threading.Thread(target=self._shutdown_event.wait,
                          daemon=False, name="AppAnchorThread").start()
+
+        # Re-upload any sessions queued locally by a previous run.
+        threading.Thread(target=self._flush_pending_sessions,
+                         daemon=True, name="PendingSessionFlush").start()
 
         log.info(f"TimerTracker ready for {self.user_email}")
 
@@ -334,8 +345,9 @@ class TimerTracker:
                 if self.session:
                     self.session.end_time        = datetime.now().isoformat()
                     self.session.total_duration  = total_elapsed
-                    self.session.active_duration = total_elapsed
-                    self.session.idle_duration   = 0.0
+                    active, idle = self._compute_active_idle(total_elapsed)
+                    self.session.active_duration = active
+                    self.session.idle_duration   = idle
                     self.session.status          = "completed"
 
                 completed    = self.session
@@ -491,19 +503,23 @@ class TimerTracker:
             except Exception:
                 pass
 
-        # For periodic rows we also set end_time to "now" so that
-        # the column is never NULL in productivity_sessions. Final
-        # completed rows still get the precise stop timestamp from
-        # _save_session_to_db.
+        # Preserve the real session start_time on periodic upserts. Using
+        # now_iso here would overwrite the true start on every 60s tick,
+        # corrupting it if the session ends without a clean finalize.
+        # end_time is intentionally "now" so the column is never NULL;
+        # the final completed row still gets the precise stop timestamp
+        # from _save_session_to_db.
+        session_start = self.session.start_time if self.session else now_iso
+        p_active, p_idle = self._compute_active_idle(elapsed)
         row = {
             "session_id":       session_id,
             "user_id":          self.user_id,
             "user_email":       self.user_email,
-            "start_time":       now_iso,
+            "start_time":       session_start,
             "end_time":         now_iso,
             "total_duration":   elapsed,
-            "active_duration":  elapsed,
-            "idle_duration":    0.0,
+            "active_duration":  p_active,
+            "idle_duration":    p_idle,
             "mouse_events":     mouse_events,
             "keyboard_events":  keyboard_events,
             "screenshots_taken": screenshots,
@@ -702,6 +718,70 @@ class TimerTracker:
         except Exception as e:
             log.error(f"Data collection error: {e}")
 
+    def get_stats(self) -> Dict[str, float]:
+        """Aggregate live stats for the dashboard UI (best-effort).
+
+        Returns keys the dashboard reads: active_percentage, keystrokes,
+        mouse_actions, screenshots. Any tracker that isn't ready contributes 0.
+        Deliberately does NOT expose a keyboard *percentage* key so the
+        'Keystrokes' tile shows the raw count, not a ratio.
+        """
+        stats = {"active_percentage": 0.0, "keystrokes": 0,
+                 "mouse_actions": 0, "screenshots": 0}
+        ratios = []
+        if self.mouse_tracker:
+            try:
+                ms = self.mouse_tracker.get_stats()
+                stats["mouse_actions"] = int(ms.get("total_events", 0) or 0)
+                ratios.append(float(ms.get("active_percentage", 0.0) or 0.0))
+            except Exception:
+                pass
+        if self.keyboard_tracker:
+            try:
+                ks = self.keyboard_tracker.get_stats()
+                stats["keystrokes"] = int(
+                    ks.get("total_keys_pressed", ks.get("total_keys", 0)) or 0)
+                ratios.append(float(ks.get("keyboard_activity_percentage", 0.0) or 0.0))
+            except Exception:
+                pass
+        if self.screenshot_capture:
+            try:
+                stats["screenshots"] = int(
+                    self.screenshot_capture.stats().get("total_captured", 0) or 0)
+            except Exception:
+                pass
+        if ratios:
+            stats["active_percentage"] = round(max(ratios), 1)
+        return stats
+
+    def _compute_active_idle(self, total_elapsed: float) -> tuple:
+        """Derive real active/idle seconds from the mouse & keyboard trackers.
+
+        A second counts as active if the user was active on EITHER device, so we
+        take the higher of the two activity ratios. Falls back to (total, 0) when
+        no tracker data is available, preserving the previous behaviour rather
+        than reporting a misleading 0% active.
+        """
+        ratios = []
+        if self.mouse_tracker:
+            try:
+                mp = float(self.mouse_tracker.get_stats().get("active_percentage", 0.0))
+                ratios.append(mp / 100.0)
+            except Exception:
+                pass
+        if self.keyboard_tracker:
+            try:
+                kp = float(self.keyboard_tracker.get_stats().get("keyboard_activity_percentage", 0.0))
+                ratios.append(kp / 100.0)
+            except Exception:
+                pass
+        if not ratios or total_elapsed <= 0:
+            return float(total_elapsed), 0.0
+        active_ratio = max(0.0, min(1.0, max(ratios)))
+        active = round(total_elapsed * active_ratio, 2)
+        idle   = round(max(0.0, total_elapsed - active), 2)
+        return active, idle
+
     def _calculate_productivity(self, session: TrackingSession) -> None:
         try:
             kb  = min(session.keyboard_events / 10, 100) if session.keyboard_events else 0.0
@@ -762,6 +842,7 @@ class TimerTracker:
         }
 
     def _save_session_to_db(self, session: TrackingSession) -> None:
+        row = None
         try:
             # Ensure end_time is populated even if, for any reason, it wasn't
             # set correctly in stop(). This guarantees non-NULL end_time in DB
@@ -814,14 +895,76 @@ class TimerTracker:
                 # Text column now contains JSON with both apps + human durations
                 "app_usage_summary": json.dumps(enhanced_summary),
             }
-            resp = self._supabase.table("productivity_sessions") \
-                .upsert(row, on_conflict="session_id").execute()
-            if getattr(resp, "data", None):
+            if self._upsert_session(row):
                 log.info(f"Session saved: {session.session_id}")
             else:
-                log.error(f"DB insert no data for {session.session_id}")
+                # Every retry failed — persist locally so the session isn't lost.
+                self._queue_failed_session(row)
         except Exception as e:
             log.error(f"DB save error: {e}")
+            if row is not None:
+                self._queue_failed_session(row)
+
+    def _upsert_session(self, row: dict, retries: int = 3) -> bool:
+        """Upsert one productivity_sessions row, retrying with backoff.
+        Returns True on success, False if every attempt failed."""
+        delay = 2.0
+        for attempt in range(1, retries + 1):
+            try:
+                resp = self._supabase.table("productivity_sessions") \
+                    .upsert(row, on_conflict="session_id").execute()
+                if getattr(resp, "data", None):
+                    return True
+                log.error(f"DB upsert no data (attempt {attempt}/{retries}) for {row.get('session_id')}")
+            except Exception as e:
+                log.error(f"DB upsert error (attempt {attempt}/{retries}) for {row.get('session_id')}: {e}")
+            if attempt < retries:
+                time.sleep(delay)
+                delay *= 2
+        return False
+
+    def _queue_failed_session(self, row: dict) -> None:
+        """Append a failed row to the local queue for a later retry."""
+        try:
+            with self._pending_lock:
+                with open(self._pending_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(row) + "\n")
+            log.warning(f"Session {row.get('session_id')} queued locally for later upload")
+        except Exception as e:
+            log.error(f"Could not queue session locally: {e}")
+
+    def _flush_pending_sessions(self) -> None:
+        """Re-upload locally-queued sessions; keep any that still fail."""
+        try:
+            # Atomically snapshot the queue and clear the file, so any append
+            # during the slow re-upload below is preserved, not overwritten.
+            with self._pending_lock:
+                if not os.path.exists(self._pending_path):
+                    return
+                with open(self._pending_path, "r", encoding="utf-8") as f:
+                    lines = [ln.strip() for ln in f if ln.strip()]
+                open(self._pending_path, "w", encoding="utf-8").close()  # truncate
+            if not lines:
+                return
+            remaining, uploaded = [], 0
+            for ln in lines:
+                try:
+                    row = json.loads(ln)
+                except Exception:
+                    continue  # drop an unparseable line
+                if self._upsert_session(row, retries=1):
+                    uploaded += 1
+                else:
+                    remaining.append(ln)
+            # Re-queue the ones that still failed (append under lock).
+            if remaining:
+                with self._pending_lock:
+                    with open(self._pending_path, "a", encoding="utf-8") as f:
+                        f.write("\n".join(remaining) + "\n")
+            if uploaded:
+                log.info(f"Flushed {uploaded} pending session(s); {len(remaining)} still pending")
+        except Exception as e:
+            log.error(f"Pending-session flush error: {e}")
 
     def _spawn(self, target, name: str) -> threading.Thread:
         t = threading.Thread(target=target, daemon=True, name=name)

@@ -409,11 +409,10 @@ class MouseTracker:
         self.session_summary["timestamp"]  = datetime.now().isoformat()
 
         self._t_movement = threading.Thread(target=self._track_movement,         daemon=True)
-        self._t_idle     = threading.Thread(target=self._monitor_idle_status,    daemon=True)
         self._t_time     = threading.Thread(target=self._track_time_continuously, daemon=True)
         self._t_upload   = threading.Thread(target=self._periodic_upload_loop,   daemon=True)
 
-        for t in (self._t_movement, self._t_idle, self._t_time, self._t_upload):
+        for t in (self._t_movement, self._t_time, self._t_upload):
             t.start()
 
         print("🖱️  Tracking STARTED")
@@ -539,12 +538,6 @@ class MouseTracker:
                 time.sleep(1)
 
     # ── Idle monitor ─────────────────────────────────────────────────────────
-
-    def _monitor_idle_status(self):
-        while self.is_tracking:
-            if not self._wait_if_paused():
-                break
-            time.sleep(1)
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -789,13 +782,11 @@ class MouseTracker:
     # ── Cleanup / reporting ──────────────────────────────────────────────────
 
     def _cleanup_temp_files(self):
-        for f in os.listdir("."):
-            if f.endswith(".csv") and "mouse" in f.lower():
-                try:
-                    os.remove(f)
-                    print(f"🗑️  Removed {f}")
-                except Exception as exc:
-                    print(f"⚠️  Could not remove {f}: {exc}")
+        # This tracker no longer writes any CSV files, so there is nothing of its
+        # own to clean up. The previous implementation deleted ANY file in the
+        # current directory matching "*mouse*.csv" — which could destroy the
+        # user's own unrelated files. Kept as a no-op to preserve the call site.
+        return
 
     def get_session_summary(self) -> Dict:
         return self.session_summary.copy()
@@ -804,12 +795,19 @@ class MouseTracker:
         if self.is_tracking and self.start_time:
             now  = time.time()
             temp = self.session_summary.copy()
+            active_s = self.session_active_seconds
+            idle_s   = self.session_idle_seconds
+            total_ai = active_s + idle_s
             temp.update({
                 "duration_seconds":            round(now - self.start_time, 2),
                 "total_events":                sum(b["total_events"] for b in self.time_buckets.values()),
                 "current_status":              self.idle_status.value,
                 "is_currently_active":         (now - self.last_activity_time) < 2.0,
                 "seconds_since_last_activity": round(now - self.last_activity_time, 1),
+                # Live active/idle % — previously only set inside stop(), so any
+                # caller during the session (e.g. the productivity calc) saw 0.0.
+                "active_percentage":           round(active_s / total_ai * 100, 1) if total_ai > 0 else 0.0,
+                "idle_percentage":             round(idle_s / total_ai * 100, 1) if total_ai > 0 else 0.0,
             })
             return temp
         return self.session_summary.copy()
@@ -824,7 +822,13 @@ class MouseTracker:
         rows = []
         for minute, data in buckets.items():
             total_s = data["active_seconds"] + data["idle_seconds"]
-            
+            active_pct = (data["active_seconds"] / total_s * 100) if total_s > 0 else 0.0
+            rows.append({
+                "Minute": minute,
+                "Active (s)": round(data["active_seconds"], 1),
+                "Idle (s)": round(data["idle_seconds"], 1),
+                "Active %": round(active_pct, 1),
+            })
         return pd.DataFrame(rows).sort_values("Minute") if rows else pd.DataFrame()
 
 

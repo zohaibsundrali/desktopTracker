@@ -1,0 +1,43 @@
+# ---------- Secrets / credentials ----------
+.env
+.env.*
+!.env.example
+.remember_me.json
+
+# ---------- Captured user data (never commit) ----------
+screenshots/
+user_data/
+*.log
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ---------- Virtual environments ----------
+venv/
+.venv/
+env/
+ENV/
+
+# ---------- Local databases ----------
+*.db
+*.sqlite
+*.sqlite3
+
+# ---------- Editors / OS ----------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local fallback queue for failed session uploads
+.pending_sessions.jsonl

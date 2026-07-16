@@ -3,6 +3,7 @@ import ctypes
 import getpass
 import logging
 import os
+import re
 import socket
 import sys
 import threading
@@ -66,12 +67,45 @@ def get_foreground_app() -> Optional[str]:
         return None
 
 
+_SENSITIVE_KV_RE = re.compile(
+    r'\b(token|password|passwd|pwd|secret|api[_-]?key|apikey|access[_-]?token|'
+    r'refresh[_-]?token|authorization|session[_-]?id|client[_-]?secret|'
+    r'id[_-]?token|bearer)\b(\s*[=:]\s*)(\S+)',
+    re.IGNORECASE,
+)
+_EMAIL_RE = re.compile(r'\b[\w.+-]+@[\w-]+\.[\w.-]+\b')
+_MAX_TITLE_LEN = 150
+
+
+def sanitize_title(title: str) -> str:
+    """Strip secrets from a window title before it is stored or uploaded.
+
+    Window titles routinely contain full URLs with OAuth tokens, session ids,
+    emails, etc. Keep the human-readable part (app/page name, domain, path)
+    and redact query strings and sensitive key=value pairs.
+    """
+    if not title:
+        return ""
+    t = title
+    # 1) URL query strings (?a=b&c=d) — the common OAuth/token leak.
+    t = re.sub(r'\?[^\s]*=[^\s]*', '?[redacted]', t)
+    # 2) Any remaining sensitive key=value / key: value pairs.
+    t = _SENSITIVE_KV_RE.sub(lambda m: m.group(1) + m.group(2) + "[redacted]", t)
+    # 3) Email addresses.
+    t = _EMAIL_RE.sub("[email]", t)
+    # 4) Cap length to avoid storing huge blobs.
+    t = t.strip()
+    if len(t) > _MAX_TITLE_LEN:
+        t = t[:_MAX_TITLE_LEN].rstrip() + "…"
+    return t
+
+
 def get_foreground_title() -> str:
     if _PLATFORM != "windows":
         return ""
     try:
         hwnd = win32gui.GetForegroundWindow()
-        return win32gui.GetWindowText(hwnd) if hwnd else ""
+        return sanitize_title(win32gui.GetWindowText(hwnd)) if hwnd else ""
     except Exception:
         return ""
 
@@ -193,9 +227,8 @@ CREATE TABLE IF NOT EXISTS app_usage (
     created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE app_usage
-    ADD CONSTRAINT IF NOT EXISTS app_usage_session_app_unique
-    UNIQUE (session_id, app_name_raw);
+CREATE UNIQUE INDEX IF NOT EXISTS app_usage_session_app_unique
+    ON app_usage (session_id, app_name_raw);
 
 CREATE INDEX IF NOT EXISTS idx_app_usage_session_id  ON app_usage (session_id);
 CREATE INDEX IF NOT EXISTS idx_app_usage_user_email  ON app_usage (user_email);
@@ -213,7 +246,7 @@ def _pid_title_map() -> Dict[int, str]:
         try:
             if not win32gui.IsWindowVisible(hwnd):
                 return
-            title = win32gui.GetWindowText(hwnd)
+            title = sanitize_title(win32gui.GetWindowText(hwnd))
             if not title:
                 return
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
@@ -235,7 +268,8 @@ def _linux_title() -> str:
         d = _xdisplay.Display()
         win = d.get_input_focus().focus
         raw = win.get_wm_name()
-        return raw.decode("utf-8") if isinstance(raw, bytes) else (raw or "")
+        decoded = raw.decode("utf-8") if isinstance(raw, bytes) else (raw or "")
+        return sanitize_title(decoded)
     except Exception:
         return ""
 
@@ -429,6 +463,53 @@ class CloudDB:
                                 f'Failed to sync {len(pending)} app sessions after {MAX_RETRIES} attempts')
         return 0
 
+    def save_sites(self, site_seconds: Dict[str, dict],
+                   user_login: str, user_email: str, session_id: str) -> int:
+        """Upsert per-website browser usage into the browser_usage table."""
+        if not self.available or not site_seconds:
+            return 0
+
+        records = []
+        for site, rec in site_seconds.items():
+            secs = float(rec.get("seconds", 0.0))
+            if secs <= 0:
+                continue
+            first = rec.get("first")
+            last = rec.get("last")
+            records.append({
+                "session_id":       session_id,
+                "user_login":       user_login,
+                "user_email":       user_email,
+                "site":             site,
+                "duration_seconds": round(secs, 2),
+                "duration_minutes": round(secs / 60, 4),
+                "first_seen":       first.isoformat() if first else None,
+                "last_seen":        last.isoformat() if last else None,
+            })
+        if not records:
+            return 0
+        if not self._has_user_login:
+            for r in records:
+                r.pop("user_login", None)
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                resp = self._client.table("browser_usage").upsert(
+                    records, on_conflict="session_id,site").execute()
+                if getattr(resp, "data", None):
+                    return len(records)
+            except Exception as exc:
+                err = str(exc)
+                if "PGRST204" in err and "user_login" in err and self._has_user_login:
+                    self._has_user_login = False
+                    for r in records:
+                        r.pop("user_login", None)
+                    continue
+                log.warning(f"browser_usage save failed (attempt {attempt}): {err[:80]}")
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_BACKOFF ** attempt)
+        return 0
+
     def save_live_snapshot(self,
                            active_sessions: List[AppSession],
                            user_login: str, user_email: str, session_id: str,
@@ -550,6 +631,11 @@ class AppMonitor:
         self._current_foreground: Optional[str] = None
         self._previous_foreground: Optional[str] = None
         self._last_poll_time: float = time.time()
+
+        # Per-website time tracking (browser tabs).
+        # site label -> {"seconds": float, "first": datetime, "last": datetime}
+        self._site_seconds: Dict[str, dict] = {}
+        self._site_url_cache: Dict[str, Optional[str]] = {}
 
         self._cloud = CloudDB()
         self._error_tracker = ErrorTracker()
@@ -700,6 +786,7 @@ class AppMonitor:
 
                 fg_app   = get_foreground_app()
                 fg_title = get_foreground_title() if fg_app else ""
+                fg_site  = self._detect_site(fg_app, fg_title)
                 
                 current_time = time.time()
                 time_delta = current_time - self._last_poll_time
@@ -709,7 +796,10 @@ class AppMonitor:
                     self._current_foreground = fg_app
 
                     if fg_app and fg_app not in _IGNORE:
-                        if (self._previous_foreground and 
+                        if fg_site:
+                            self._accumulate_site(fg_site, time_delta)
+
+                        if (self._previous_foreground and
                             self._previous_foreground != fg_app and 
                             self._previous_foreground in self._active):
                             log.debug(
@@ -722,10 +812,8 @@ class AppMonitor:
                             self._open_session(fg_app, fg_title)
 
                         if fg_app in self._active:
-                            if self._previous_foreground == fg_app or fg_app not in self._active:
+                            if self._previous_foreground == fg_app:
                                 self._active[fg_app].add_active_time(time_delta)
-                            else:
-                                pass
 
                             current_title = self._active[fg_app].window_title
                             if fg_title and len(fg_title) > len(current_title):
@@ -733,9 +821,11 @@ class AppMonitor:
 
                         self._previous_foreground = fg_app
                     else:
-                        self._previous_foreground = None
-
-                        if (self._previous_foreground and 
+                        # Focus moved to no app / an ignored app. Credit the last
+                        # real app for this final slice BEFORE clearing it — the
+                        # previous code nulled _previous_foreground first, which
+                        # made this crediting dead code.
+                        if (self._previous_foreground and
                             self._previous_foreground in self._active and
                             self._previous_foreground not in _IGNORE):
                             self._active[self._previous_foreground].add_active_time(time_delta)
@@ -743,7 +833,7 @@ class AppMonitor:
                                 f"Lost focus: {self._previous_foreground} "
                                 f"(credited {time_delta:.2f}s)"
                             )
-                            self._previous_foreground = None
+                        self._previous_foreground = None
 
                     self._detect_closed_processes()
 
@@ -843,11 +933,52 @@ class AppMonitor:
             log.warning(f"{len(self._active)} apps still in _active after finalization")
             self._active.clear()
 
+    def _detect_site(self, app_raw: Optional[str], title: str) -> Optional[str]:
+        """Resolve the browser site for the current foreground (runs OUTSIDE the
+        lock, since the URL fallback can be slow).
+
+        Title-based first; URL-based fallback only once per unseen title (cached).
+        Returns 'Other website' for an unrecognised browser page so total browser
+        time is still represented, or None when the app is not a browser.
+        """
+        try:
+            import site_detector as sd
+            if not sd.is_browser(app_raw):
+                return None
+            site = sd.site_from_title(title)
+            if site is not None:
+                return site
+            key = title or ""
+            if key in self._site_url_cache:
+                return self._site_url_cache[key]
+            resolved = sd.site_from_url_label() or "Other website"
+            self._site_url_cache[key] = resolved
+            return resolved
+        except Exception:
+            return None
+
+    def _accumulate_site(self, site: str, time_delta: float) -> None:
+        """Credit active time to a browser site (called under self._lock)."""
+        now = datetime.now()
+        rec = self._site_seconds.get(site)
+        if rec is None:
+            self._site_seconds[site] = {"seconds": float(time_delta),
+                                        "first": now, "last": now}
+        else:
+            rec["seconds"] += float(time_delta)
+            rec["last"] = now
+
     def _flush(self) -> None:
         self._cloud.save(
             self._done, self.user_login,
             self.user_email, self.session_id,
             error_tracker=self._error_tracker,
+        )
+        # Per-website browser usage
+        with self._lock:
+            sites_snapshot = {k: dict(v) for k, v in self._site_seconds.items()}
+        self._cloud.save_sites(
+            sites_snapshot, self.user_login, self.user_email, self.session_id,
         )
 
     def _print_report(self) -> None:

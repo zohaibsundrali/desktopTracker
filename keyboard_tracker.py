@@ -187,7 +187,7 @@ class _TrackingCore:
         self.window_events: List[KeyEvent] = []
 
         self.key_press_times:    Dict[str, dict] = {}
-        self.processed_releases: Set[str]        = set()
+        self.processed_releases: Dict[str, None] = {}
 
         # Full session buckets (never reset)
         self.time_buckets: Dict[str, dict] = defaultdict(_new_bucket)
@@ -336,7 +336,7 @@ class _TrackingCore:
             duration = time.monotonic() - press_info["time"]
             del self.key_press_times[key_str]
 
-            self.processed_releases.add(release_id)
+            self.processed_releases[release_id] = None
             self._prune_release_cache()
 
             bucket = _minute_bucket()
@@ -409,9 +409,12 @@ class _TrackingCore:
     def _prune_release_cache(self) -> None:
         limit = self.config.release_cache_limit
         if len(self.processed_releases) > limit:
-            half    = limit // 2
-            discard = set(list(self.processed_releases)[:half])
-            self.processed_releases -= discard
+            # Drop the OLDEST half. processed_releases is an insertion-ordered
+            # dict, so iterating yields keys oldest-first (a plain set gave an
+            # arbitrary, non-deterministic slice).
+            half = limit // 2
+            for old_id in list(self.processed_releases)[:half]:
+                self.processed_releases.pop(old_id, None)
 
     def clear(self) -> None:
         with self._lock:
@@ -1101,80 +1104,8 @@ class KeyboardTracker:
     # Manual on-demand Supabase save  [FIX-3] network-safe
     # ------------------------------------------------------------------
 
-    def save_to_supabase(
-        self,
-        supabase_client               = None,
-        session_id:       str         = "",
-        developer_id:     str         = "",
-        developer_email:  str         = "",
-    ):
-        """Optional manual full-session snapshot upload."""
-        client = supabase_client or self._supabase_client
-        if not client or not self._tracking.events:
-            print("⚠️  save_to_supabase: no client or no events — skipped.")
-            return None
-
-        try:
-            stats   = self.get_stats()
-            per_min = self._analytics.build_per_minute_dataframe()
-            minute_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-            payload = {
-                # Identity - include BOTH fields to satisfy constraints
-                "session_id":       self._session_id,
-                "user_email":       self._developer_email or "",  # ADD THIS - maps to your schema
-                "developer_id":     self._developer_id   or "",
-                "developer_email":  self._developer_email or "",  # Keep for your code
-                
-                # Score
-                "activity_score":   score.final_score,
-                
-                # Time metrics - match schema precision
-                "keyboard_activity_percentage": cs.activity_pct,
-                "active_time_minutes":          round(cs.active_seconds / 60, 2),
-                "idle_time_minutes":            round(cs.idle_seconds   / 60, 2),
-                "total_time_minutes":           round(cs.total_seconds  / 60, 2),
-                
-                # Keystroke metrics
-                "total_keys":           cs.total_keys,
-                "unique_keys":          cs.unique_keys,
-                "words_per_minute":     round(cs.wpm, 2),
-                "backspace_ratio":      round(cs.backspace_ratio, 1),
-                "special_keys_ratio":   round(cs.special_ratio, 1),
-                "key_events":           cs.total_keys,  # Add this for schema
-                
-                # Advanced metrics
-                "avg_key_duration":     round(cs.avg_duration, 4),
-                "typing_speed_std":     round(cs.std_duration, 4),
-                "iki_std":              round(cs.iki_std, 4),  # Now exists after previous fix
-                
-                # JSONB
-                "heatmap_data":         heatmap,
-                "per_minute_summary":   per_min.to_dict("records") if not per_min.empty else [],
-                
-                # Audit
-                "tracked_at":           datetime.now().isoformat(),
-            }
-
-            try:
-                response = (
-                    client
-                    .table("keyboard_stats")
-                    .upsert(payload, on_conflict="session_id,minute_timestamp")
-                    .execute()
-                )
-                print(
-                    f"💾 Manual save OK  |  Score: {stats['activity_score']}/100  "
-                    f"|  WPM: {stats['words_per_minute']}"
-                )
-                return response
-            except Exception as net_exc:
-                print(f"⚠️  Manual save failed: {net_exc}")
-                return None
-
-        except Exception as exc:
-            print(f"⚠️  save_to_supabase error: {exc}")
-            return None
+    # save_to_supabase() was removed: dead code (undefined score/cs/heatmap -> always errored),
+    # and it was the only path that uploaded raw keystroke characters, which must not be transmitted.
 
     # ------------------------------------------------------------------
     # Memory management

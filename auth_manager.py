@@ -1,7 +1,6 @@
 # auth_manager.py - CLEAN SIMPLE VERSION
-from datetime import datetime, timedelta, date
+from datetime import datetime
 from supabase import create_client
-import jwt
 from config import config
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -21,44 +20,8 @@ class AuthManager:
     def __init__(self):
         self.supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
         self.current_user: Optional[User] = None
-        self.token_secret = "your-secret-key-change-this"
 
-    # ------------------------------------------------------------------
-    # Developer login restriction helpers
-    # ------------------------------------------------------------------
-
-    def _get_login_date_str(self, login_date: Optional[date] = None) -> str:
-        """Return an ISO date string (YYYY-MM-DD) used for daily login limits."""
-        return (login_date or date.today()).isoformat()
-
-    def get_daily_login_count(self, developer_id: str, login_date: Optional[date] = None) -> int:
-        """Return number of successful logins recorded for this developer on login_date."""
-        login_date_str = self._get_login_date_str(login_date)
-        result = (
-            self.supabase
-            .table("developer_logins")
-            .select("id")
-            .eq("developer_id", developer_id)
-            .eq("login_date", login_date_str)
-            .execute()
-        )
-        return len(result.data or [])
-
-    def record_successful_login(self, developer_id: str, login_date: Optional[date] = None) -> None:
-        """Insert a row into developer_logins for a successful login."""
-        login_date_str = self._get_login_date_str(login_date)
-        payload = {
-            "developer_id": developer_id,
-            "login_date": login_date_str,
-        }
-        (
-            self.supabase
-            .table("developer_logins")
-            .insert(payload)
-            .execute()
-        )
-        
-    def register_user(self, email: str, password: str, name: str, 
+    def register_user(self, email: str, password: str, name: str,
                      company: str) -> Tuple[bool, str]:
         """
         Register new user
@@ -136,44 +99,12 @@ class AuthManager:
                 role="developer"
             )
 
-            # Enforce daily login limit (max 2 successful logins per day).
-            # Note: we use login_date (DATE) for automatic next-day reset.
-            try:
-                today_count = self.get_daily_login_count(user.id)
-            except Exception:
-                return False, "Unable to verify daily login limit. Please try again later.", None
-
-            if today_count >= 2:
-                return False, "Daily login limit reached. Please try again tomorrow.", None
-
-            # Record successful login.
-            try:
-                self.record_successful_login(user.id)
-            except Exception:
-                return False, "Unable to record login. Please try again later.", None
-            
             self.current_user = user
-            
+
             return True, "Login successful", user
             
         except Exception as e:
             return False, f"Error: {str(e)}", None
-    
-    def generate_token(self, user_id: str) -> str:
-        """Generate JWT token"""
-        payload = {
-            "user_id": user_id,
-            "exp": datetime.utcnow() + timedelta(hours=24)
-        }
-        return jwt.encode(payload, self.token_secret, algorithm="HS256")
-    
-    def verify_token(self, token: str) -> Optional[str]:
-        """Verify JWT token and return user_id"""
-        try:
-            payload = jwt.decode(token, self.token_secret, algorithms=["HS256"])
-            return payload.get("user_id")
-        except:
-            return None
     
     def logout(self):
         """Logout current user"""

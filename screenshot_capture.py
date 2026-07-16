@@ -168,6 +168,25 @@ class ScreenshotCapture:
 
     # ── single capture ────────────────────────────────────────────────────────
 
+    def _current_app(self) -> Optional[str]:
+        """Best-effort friendly name of the currently-focused app.
+
+        Returns None off-Windows or on any error, so it never breaks capture.
+        Previously app_active was never set, so every row stored NULL.
+        """
+        try:
+            from app_monitor import get_foreground_app
+            raw = get_foreground_app()
+            if not raw:
+                return None
+            try:
+                from app_name_converter import AppNameConverter
+                return AppNameConverter().convert(raw)
+            except Exception:
+                return raw
+        except Exception:
+            return None
+
     def capture(self, annotation: str = "") -> Optional[ScreenshotInfo]:
         """Take one screenshot, upload to Supabase, and keep metadata in memory."""
         try:
@@ -203,6 +222,7 @@ class ScreenshotCapture:
                 width=w,
                 height=h,
                 size_kb=size_kb,
+                app_active=self._current_app(),
             )
 
             # If we were paused mid-capture, discard this screenshot and do not
