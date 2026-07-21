@@ -541,8 +541,8 @@ def create_session_report(
             move_events=mouse_stats.get("move_events", 0),
             click_events=mouse_stats.get("click_events", 0),
             scroll_events=mouse_stats.get("scroll_events", 0),
-            distance_pixels=mouse_stats.get("distance", 0.0),
-            activity_percentage=mouse_stats.get("activity_percentage", 0.0)
+            distance_pixels=mouse_stats.get("total_distance", mouse_stats.get("distance", 0.0)),
+            activity_percentage=mouse_stats.get("active_percentage", 0.0)
         )
     
     # Add screenshot summary

@@ -146,8 +146,10 @@ class LoginWindow:
     #  Behaviour (preserved verbatim)
     # ------------------------------------------------------------------
     def _credentials_path(self) -> str:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(base_dir, ".remember_me.json")
+        # Written to a per-user writable dir, not next to the program (which is
+        # read-only when installed under Program Files).
+        from config import user_data_dir
+        return os.path.join(user_data_dir(), ".remember_me.json")
 
     def _load_saved_credentials(self) -> None:
         try:

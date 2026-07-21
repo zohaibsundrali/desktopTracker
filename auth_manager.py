@@ -1,9 +1,19 @@
-# auth_manager.py - CLEAN SIMPLE VERSION
+# auth_manager.py - Supabase Auth version (admin-provisioned users)
+#
+# Login now goes through Supabase Auth (GoTrue): passwords are verified and
+# hashed by Supabase, and the returned JWT is attached to every Supabase client
+# in the app so Row Level Security scopes each user to their own data.
+#
+# Account creation is ADMIN-ONLY (see admin_create_user.py). The desktop app
+# only signs in — register_user() is intentionally disabled here.
 from datetime import datetime
 from supabase import create_client
 from config import config
 from dataclasses import dataclass
 from typing import Optional, Tuple
+
+import supabase_session
+
 
 @dataclass
 class User:
@@ -14,120 +24,112 @@ class User:
     status: str
     created_at: str
     role: str = "developer"  # Default value since no column in DB
-    
+
 
 class AuthManager:
     def __init__(self):
         self.supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+        # Keep this client authorized alongside the trackers.
+        supabase_session.register(self.supabase)
         self.current_user: Optional[User] = None
 
-    def register_user(self, email: str, password: str, name: str,
-                     company: str) -> Tuple[bool, str]:
-        """
-        Register new user
-        Returns: (success, message)
-        """
-        try:
-            # Check if email exists
-            existing = self.supabase.table("developers")\
-                .select("*")\
-                .eq("email", email)\
-                .execute()
-            
-            if existing.data:
-                return False, "Email already registered"
-            
-            # Insert user
-            user_data = {
-                "email": email,
-                "password": password,  # Plain text store
-                "name": name,
-                "company": company,
-                "status": "active",
-                "projects_count": 0,
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-            }
-            
-            result = self.supabase.table("developers")\
-                .insert(user_data)\
-                .execute()
-            
-            if result.data:
-                return True, "Registration successful"
-            else:
-                return False, "Registration failed"
-                
-        except Exception as e:
-            return False, f"Error: {str(e)}"
-    
+    def register_user(self, *args, **kwargs) -> Tuple[bool, str]:
+        """Self-registration is disabled — accounts are provisioned by an admin."""
+        return False, "Accounts are created by your administrator."
+
     def login(self, email: str, password: str) -> Tuple[bool, str, Optional[User]]:
-        """
-        Login user
+        """Sign in via Supabase Auth.
+
         Returns: (success, message, user_object)
         """
+        email = (email or "").strip()
+        if not email or not password:
+            return False, "Please fill in all fields", None
+
+        # --- 1) Authenticate with Supabase Auth --------------------------------
         try:
-            # Get user from Supabase
-            result = self.supabase.table("developers")\
-                .select("*")\
-                .eq("email", email)\
-                .execute()
-            
-            if not result.data:
-                return False, "Invalid email or password", None
-            
-            user_data = result.data[0]
-            
-            # Password comparison
-            stored_password = user_data.get("password", "")
-            
-            if stored_password != password:
-                return False, "Invalid email or password", None
-            
-            # Check status
-            if user_data.get("status") != "active":
-                return False, "Account is not active", None
-            
-            # Create user object
-            user = User(
-                id=str(user_data["id"]),
-                email=user_data["email"],
-                name=user_data.get("name", ""),
-                company=user_data.get("company", ""),
-                status=user_data.get("status", "active"),
-                created_at=user_data.get("created_at", ""),
-                role="developer"
-            )
-
-            self.current_user = user
-
-            return True, "Login successful", user
-            
+            auth = self.supabase.auth
+            if hasattr(auth, "sign_in_with_password"):
+                res = auth.sign_in_with_password({"email": email, "password": password})
+            elif hasattr(auth, "sign_in"):  # very old client fallback
+                res = auth.sign_in(email=email, password=password)
+            else:
+                return False, "Auth client does not support password login", None
         except Exception as e:
-            return False, f"Error: {str(e)}", None
-    
+            msg = str(e)
+            low = msg.lower()
+            if "invalid" in low or "credential" in low or "email not confirmed" in low:
+                return False, "Invalid email or password", None
+            return False, f"Login error: {msg}", None
+
+        session = getattr(res, "session", None) or res
+        auth_user = getattr(res, "user", None) or getattr(session, "user", None)
+        access_token = getattr(session, "access_token", None)
+        refresh_token = getattr(session, "refresh_token", None)
+        if not access_token or auth_user is None:
+            return False, "Invalid email or password", None
+
+        uid = getattr(auth_user, "id", None)
+        if uid is None and isinstance(auth_user, dict):
+            uid = auth_user.get("id")
+        if not uid:
+            return False, "Login failed: no user id returned", None
+
+        # --- 2) Authorize every Supabase client with this user's JWT -----------
+        supabase_session.set_tokens(access_token, refresh_token)
+
+        # --- 3) Load the profile row (RLS: only the user's own developers row) -
+        profile = {}
+        try:
+            resp = (
+                self.supabase.table("developers")
+                .select("*")
+                .eq("id", uid)
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                profile = resp.data[0]
+        except Exception:
+            profile = {}
+
+        if profile.get("status", "active") != "active":
+            self.logout()
+            return False, "Account is not active", None
+
+        user_email = getattr(auth_user, "email", None) or email
+        user = User(
+            id=str(uid),
+            email=user_email,
+            name=profile.get("name", ""),
+            company=profile.get("company", ""),
+            status=profile.get("status", "active"),
+            created_at=profile.get("created_at", ""),
+            role="developer",
+        )
+        self.current_user = user
+        return True, "Login successful", user
+
     def logout(self):
-        """Logout current user"""
+        """Sign out of Supabase Auth and drop the shared session token."""
+        try:
+            self.supabase.auth.sign_out()
+        except Exception:
+            pass
+        supabase_session.clear()
         self.current_user = None
-    
+
     def get_current_user(self) -> Optional[User]:
         """Get currently logged in user"""
         return self.current_user
 
     # ------------------------------------------------------------------
-    # Remember Me helpers (Supabase-backed, email only)
+    # Remember Me helpers (email only). With Supabase Auth the desktop app
+    # stores the remembered email locally; these remote helpers are kept for
+    # backward compatibility but are non-fatal if the table/RLS blocks them.
     # ------------------------------------------------------------------
 
     def save_remember_me(self, email: str, remember: bool) -> None:
-        """Persist or clear Remember Me preference for the given email.
-
-        This assumes a Supabase table `login_preferences` with at least:
-            email        text PRIMARY KEY
-            remember_me  boolean
-            updated_at   timestamptz default now()
-
-        All errors are silently ignored so login flow is never broken.
-        """
         try:
             payload = {
                 "email": email,
@@ -141,11 +143,9 @@ class AuthManager:
                 .execute()
             )
         except Exception:
-            # Non-fatal: Remember Me should never break auth
             return
 
     def get_remembered_email(self) -> Optional[str]:
-        """Return the most recently remembered email across devices, if any."""
         try:
             result = (
                 self.supabase
@@ -162,10 +162,8 @@ class AuthManager:
         except Exception:
             return None
 
+
 # Quick test if run directly
 if __name__ == "__main__":
-    print("🔐 Auth Manager - Ready")
-    print("Use in your application with:")
-    print("1. from auth_manager import AuthManager, User")
-    print("2. auth = AuthManager()")
-    print("3. success, message, user = auth.login(email, password)")
+    print("🔐 Auth Manager (Supabase Auth) - Ready")
+    print("Accounts are admin-provisioned via admin_create_user.py")

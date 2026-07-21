@@ -72,7 +72,14 @@ def _supabase_client():
     from supabase import create_client
     # Ensure URL has trailing slash to avoid storage endpoint warning
     url = SUPABASE_URL if SUPABASE_URL.endswith('/') else SUPABASE_URL + '/'
-    return create_client(url, SUPABASE_KEY)
+    client = create_client(url, SUPABASE_KEY)
+    # Authorize storage + postgrest as the signed-in user (RLS/anon key).
+    try:
+        import supabase_session
+        supabase_session.register(client)
+    except Exception:
+        pass
+    return client
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -290,7 +297,10 @@ class ScreenshotCapture:
             return None
 
         mime         = "image/jpeg" if info.filename.endswith(".jpg") else "image/png"
-        storage_path = f"{self._developer_username}/{info.filename}"
+        # Store under the user's id (= auth.uid()) so Storage RLS can scope each
+        # user to their own folder. Fall back to username if id is unavailable.
+        folder       = str(self._developer_id) if self._developer_id else self._developer_username
+        storage_path = f"{folder}/{info.filename}"
 
         # 1) Storage upload
         try:

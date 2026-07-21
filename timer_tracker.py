@@ -215,11 +215,18 @@ class TimerTracker:
         self._last_completed_session: Optional[TrackingSession] = None
 
         self._supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+        # Keep this client authorized as the signed-in user (RLS with anon key).
+        try:
+            import supabase_session
+            supabase_session.register(self._supabase)
+        except Exception:
+            pass
 
-        # Local fallback queue for sessions that fail to upload (e.g. network loss).
-        self._pending_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), ".pending_sessions.jsonl"
-        )
+        # Local fallback queue for sessions that fail to upload (e.g. network
+        # loss). Stored in a per-user writable dir so it works even when the app
+        # is installed under Program Files (read-only program folder).
+        from config import user_data_dir
+        self._pending_path = os.path.join(user_data_dir(), ".pending_sessions.jsonl")
         self._pending_lock = threading.Lock()
 
         self._shutdown_event = threading.Event()
@@ -366,12 +373,13 @@ class TimerTracker:
                 self._stop_in_progress = False
 
         if completed:
-            threading.Thread(
+            self._finalizer_thread = threading.Thread(
                 target=self._finalize_session_safe,
                 args=(completed,),
                 daemon=True,
                 name="SessionFinalizer",
-            ).start()
+            )
+            self._finalizer_thread.start()
 
         return completed
 
@@ -385,6 +393,14 @@ class TimerTracker:
     def shutdown(self):
         if self._session_state != SessionState.IDLE:
             self.stop()
+        # Wait (bounded) for the SessionFinalizer to persist/queue the last
+        # session before releasing the process, so a fast exit can't drop it.
+        t = getattr(self, "_finalizer_thread", None)
+        if t is not None and t.is_alive():
+            try:
+                t.join(timeout=15.0)
+            except Exception:
+                pass
         self._shutdown_event.set()
 
     # =========================================================================

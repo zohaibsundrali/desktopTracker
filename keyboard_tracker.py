@@ -376,7 +376,9 @@ class _TrackingCore:
                     break
             try:
                 now      = time.monotonic()
-                elapsed  = now - last_check
+                # Clamp so a pause / system sleep never dumps a huge interval
+                # into active/idle (normal loop cadence is 0.1s).
+                elapsed  = min(now - last_check, 2.0)
                 last_check = now
 
                 idle_for = now - self.last_activity
@@ -1041,7 +1043,24 @@ class KeyboardTracker:
         if not self._tracking.events:
             return _empty_stats()
 
-        cs    = self._analytics.compute_core_stats()
+        # Full-session active/idle from ALL minute buckets (not the 60s upload
+        # window). Summing buckets is self-consistent: active+idle == tracked
+        # wall time, so the percentage can't saturate to 100% on long sessions.
+        try:
+            buckets = self._tracking.time_buckets
+            full_active = sum(float(b.get("active_seconds", 0.0)) for b in buckets.values())
+            full_idle   = sum(float(b.get("idle_seconds", 0.0)) for b in buckets.values())
+            total = full_active + full_idle
+            if total > 0:
+                cs = self._analytics.compute_core_stats(
+                    window_seconds=total,
+                    active_seconds_override=full_active,
+                    idle_seconds_override=full_idle,
+                )
+            else:
+                cs = self._analytics.compute_core_stats()
+        except Exception:
+            cs = self._analytics.compute_core_stats()
         score = self._analytics.compute_activity_score(cs)
 
         return {

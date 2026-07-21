@@ -237,6 +237,12 @@ class MouseTracker:
 
         try:
             self.supabase = create_client(url, key)
+            # Keep this client authorized as the signed-in user (RLS/anon key).
+            try:
+                import supabase_session
+                supabase_session.register(self.supabase)
+            except Exception:
+                pass
             print(f"✅ Supabase connected → {url[:50]}…")
         except Exception as exc:
             print(f"❌ Supabase init failed: {exc}")
@@ -472,7 +478,9 @@ class MouseTracker:
                 now        = time.time()
                 since_last = now - self.last_activity_time
                 bucket     = self._get_minute_bucket()
-                elapsed    = now - last_check
+                # Clamp so a pause / system sleep never dumps a huge interval
+                # into active/idle (normal loop cadence is 0.1s).
+                elapsed    = min(now - last_check, 2.0)
 
                 if since_last < 2.0:
                     self.session_active_seconds                  += elapsed

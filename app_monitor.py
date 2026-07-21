@@ -343,6 +343,12 @@ class CloudDB:
             return
         try:
             self._client = create_client(url, key)
+            # Keep this client authorized as the signed-in user (RLS/anon key).
+            try:
+                import supabase_session
+                supabase_session.register(self._client)
+            except Exception:
+                pass
             log.info("Supabase connected")
         except Exception as exc:
             log.warning("Supabase connection failed: %s", exc)
@@ -789,7 +795,10 @@ class AppMonitor:
                 fg_site  = self._detect_site(fg_app, fg_title)
                 
                 current_time = time.time()
-                time_delta = current_time - self._last_poll_time
+                # Clamp the delta so a pause, system sleep/hibernate, or a long
+                # stall can never credit a huge block of "active" time to an app
+                # or website. Normal polls are POLL_INTERVAL apart.
+                time_delta = min(current_time - self._last_poll_time, POLL_INTERVAL * 2)
                 self._last_poll_time = current_time
 
                 with self._lock:
@@ -857,6 +866,9 @@ class AppMonitor:
                     wait = getattr(ctrl, "wait_if_paused", None)
                     if callable(wait) and not wait():
                         return
+                    # Resumed from a pause: reset the poll checkpoint so the
+                    # paused interval is not billed as active time next iteration.
+                    self._last_poll_time = time.time()
                     remaining = POLL_INTERVAL
                     continue
                 step = min(0.2, remaining)

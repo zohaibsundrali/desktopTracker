@@ -69,6 +69,12 @@ class DashboardWindow:
                 self.timer.shutdown()
             except Exception:
                 pass
+            # Destroy the partially-built dashboard frame so it doesn't linger
+            # in the window behind the rebuilt login view.
+            try:
+                self._dash_root.destroy()
+            except Exception:
+                pass
             raise
 
     # ------------------------------------------------------------------
@@ -540,9 +546,13 @@ class DashboardWindow:
                         pass
                 else:
                     if self.timer.is_finalizing:
+                        def _set_finalizing():
+                            if not self._alive or not self._dash_root.winfo_exists():
+                                return
+                            self.status_label.configure(
+                                text="Finalizing session...", text_color=Colors.TEXT_MUTED)
                         try:
-                            self.app.after(0, lambda: self.status_label.configure(
-                                text="Finalizing session...", text_color=Colors.TEXT_MUTED))
+                            self.app.after(0, _set_finalizing)
                         except RuntimeError:
                             pass
                     else:
