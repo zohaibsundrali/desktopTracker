@@ -25,6 +25,7 @@ from config import config
 from pause_controller import PauseController
 from app_monitor import AppMonitor
 from session_report import SessionReport, create_session_report
+import supabase_session
 
 log = logging.getLogger("timer_tracker")
 
@@ -191,7 +192,19 @@ class TimerTracker:
 
     def __init__(self, user_id: str, user_email: str = ""):
         self.user_id    = user_id
-        self.user_email = user_email or f"{user_id}@example.com"
+        # No invented address. The website reads productivity_sessions by
+        # `user_email` (src/hooks/activityHooks.js), so a fabricated
+        # "<uuid>@example.com" produced sessions that were stored perfectly
+        # and matched nothing on the dashboard - the worst kind of failure,
+        # because both ends looked healthy. An empty string is at least
+        # visibly empty; the caller always has the real address from the
+        # signed-in user.
+        self.user_email = user_email or ""
+        if not self.user_email:
+            log.warning(
+                "TimerTracker started with no email — sessions will not be "
+                "matched to a person on the dashboard."
+            )
 
         self.session: Optional[TrackingSession] = None
         self.session_report: Optional[SessionReport] = None
@@ -545,7 +558,7 @@ class TimerTracker:
 
         try:
             resp = self._supabase.table("productivity_sessions") \
-                .upsert(row, on_conflict="session_id").execute()
+                .upsert(supabase_session.stamp_org(row), on_conflict="session_id").execute()
             if getattr(resp, "data", None):
                 log.info(f"Periodic stats uploaded for {session_id} at {elapsed:.0f}s")
             else:
@@ -565,9 +578,15 @@ class TimerTracker:
             return
 
         try:
+            # ctx.session_id is threaded into every child tracker so that
+            # app_usage, browser_usage, mouse_activities and keyboard_stats
+            # all carry the SAME session_id as the productivity_sessions row.
+            # That column is how the dashboard joins them; each tracker used
+            # to mint its own, so every panel matched zero rows.
             self.app_monitor = AppMonitor(
                 user_email=self.user_email,
                 pause_ctrl=ctx.pause_ctrl,
+                session_id=ctx.session_id,
             )
             self.app_monitor.start()
             log.info("AppMonitor started")
@@ -586,6 +605,7 @@ class TimerTracker:
                 developer_id=self.user_id,
                 developer_name=self.user_email,
                 pause_ctrl=ctx.pause_ctrl,
+                session_id=ctx.session_id,
             )
             self.mouse_tracker.start()
             log.info("MouseTracker started")
@@ -604,6 +624,7 @@ class TimerTracker:
                 developer_id=self.user_id,
                 developer_email=self.user_email,
                 pause_ctrl=ctx.pause_ctrl,
+                session_id=ctx.session_id,
             )
             # start_tracking() blocks, so run the listener in a background thread
             self._spawn(
@@ -928,7 +949,7 @@ class TimerTracker:
         for attempt in range(1, retries + 1):
             try:
                 resp = self._supabase.table("productivity_sessions") \
-                    .upsert(row, on_conflict="session_id").execute()
+                    .upsert(supabase_session.stamp_org(row), on_conflict="session_id").execute()
                 if getattr(resp, "data", None):
                     return True
                 log.error(f"DB upsert no data (attempt {attempt}/{retries}) for {row.get('session_id')}")

@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 from app_name_converter import AppNameConverter
 import psutil
 from dotenv import load_dotenv
+import supabase_session
 
 try:
     import win32gui
@@ -390,7 +391,7 @@ class CloudDB:
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                resp = self._client.table("app_usage").insert(records).execute()
+                resp = self._client.table("app_usage").insert(supabase_session.stamp_org(records)).execute()
 
                 if getattr(resp, "data", None):
                     for s in pending:
@@ -427,7 +428,7 @@ class CloudDB:
                         for r in records:
                             r.pop("user_login", None)
                         try:
-                            resp2 = self._client.table("app_usage").insert(records).execute()
+                            resp2 = self._client.table("app_usage").insert(supabase_session.stamp_org(records)).execute()
                             if getattr(resp2, "data", None):
                                 for s in pending:
                                     if not s.saved_cloud:
@@ -501,7 +502,7 @@ class CloudDB:
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 resp = self._client.table("browser_usage").upsert(
-                    records, on_conflict="session_id,site").execute()
+                    supabase_session.stamp_org(records), on_conflict="session_id,site").execute()
                 if getattr(resp, "data", None):
                     return len(records)
             except Exception as exc:
@@ -611,14 +612,23 @@ class CloudDB:
 
 class AppMonitor:
     def __init__(self, user_email: Optional[str] = None, pause_ctrl: Optional[object] = None,
-                 upload_interval_seconds: float = AUTO_SAVE_SECS):
+                 upload_interval_seconds: float = AUTO_SAVE_SECS,
+                 session_id: Optional[str] = None):
         self.user_login: str = getpass.getuser()
-        self.user_email: str = (
-            user_email
-            or os.getenv("USER_EMAIL", "")
-            or f"{self.user_login}@{_get_hostname()}"
-        )
-        self.session_id: str = str(uuid.uuid4())
+        # No `<login>@<hostname>` invention. app_usage is read on the website
+        # with .eq("user_email", userEmail) against the signed-in person's
+        # real address, so a synthesised one produced rows that were stored
+        # and then never displayed.
+        self.user_email: str = user_email or os.getenv("USER_EMAIL", "")
+        if not self.user_email:
+            log.warning(
+                "AppMonitor has no user email — app usage will not be matched "
+                "to a person on the dashboard."
+            )
+        # The timer's session id when supplied. A private uuid4 here meant
+        # app_usage and browser_usage could never be joined to the session
+        # the user actually started.
+        self.session_id: str = session_id or str(uuid.uuid4())
 
         self.pause_ctrl = pause_ctrl
 
