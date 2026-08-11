@@ -27,6 +27,7 @@ load_dotenv(dotenv_path=_ENV_PATH, override=True)
 # ── Environment ───────────────────────────────────────────────────────────────
 
 import uuid as _uuid
+import supabase_session
 
 SUPABASE_URL       = os.getenv("SUPABASE_URL", "").strip()
 SUPABASE_KEY       = os.getenv("SUPABASE_KEY", "").strip()
@@ -42,7 +43,21 @@ try:
 except (ValueError, AttributeError):
     DEVELOPER_ID = None                            # will print a clear error at startup
 
-STORAGE_BUCKET = "screenshots"
+# THE `monitoring` BUCKET, NOT `screenshots`.
+#
+# Two reasons, and either on its own would be enough:
+#
+#  1. The website only signs URLs for objects whose path is in `monitoring`
+#     (`isPrivateScreenshot` in src/utils/screenshotFiles.js). An upload to
+#     `screenshots` produces a row the dashboard cannot render now that the
+#     bucket is private — it falls back to a stored public URL that no longer
+#     resolves.
+#  2. `monitoring` is the only bucket with storage policies written for it
+#     (database/019_storage_hardening.sql). They key on the leading folder
+#     being the organization, which is why the path below changed shape too.
+#
+# The metadata TABLE is still `screenshots` — only the bucket moved.
+STORAGE_BUCKET = "monitoring"
 METADATA_TABLE = "screenshots"
 
 # ── Startup environment check ─────────────────────────────────────────────────
@@ -296,11 +311,35 @@ class ScreenshotCapture:
         if sb is None:
             return None
 
-        mime         = "image/jpeg" if info.filename.endswith(".jpg") else "image/png"
-        # Store under the user's id (= auth.uid()) so Storage RLS can scope each
-        # user to their own folder. Fall back to username if id is unavailable.
-        folder       = str(self._developer_id) if self._developer_id else self._developer_username
-        storage_path = f"{folder}/{info.filename}"
+        mime = "image/jpeg" if info.filename.endswith(".jpg") else "image/png"
+
+        # `{organization_id}/{developer_id}/{filename}` — the layout the
+        # monitoring policies require and the one 019 documents:
+        #
+        #   with check (bucket_id = 'monitoring' and not auth_is_client()
+        #               and (storage.foldername(name))[1] = auth_org()::text)
+        #
+        # The LEADING folder must be the organization. It used to be the
+        # developer id, which fails that check outright — the upload is
+        # rejected, and with the service_role key that never showed up because
+        # the policy was not consulted at all.
+        # BOTH ids are required, and there is deliberately no username fallback.
+        #
+        # The website classifies an object as private-and-signable by the SHAPE
+        # of its path — `isMonitoringPath` requires a uuid in both leading
+        # segments. A path built from a username satisfies neither the policy
+        # nor the classifier, so the upload would either be refused or stored as
+        # a row the dashboard can never display. Not uploading is the honest
+        # outcome; the message below says why.
+        org = supabase_session.organization_id()
+        if not org:
+            print("   ❌ No organization on this session — not uploading.")
+            return None
+        if not self._developer_id:
+            print("   ❌ No developer id on this session — not uploading.")
+            return None
+
+        storage_path = f"{org}/{self._developer_id}/{info.filename}"
 
         # 1) Storage upload
         try:
@@ -313,12 +352,15 @@ class ScreenshotCapture:
             print(f"   ❌ Storage upload failed: {exc}")
             return None
 
-        # 2) Public URL
-        try:
-            public_url: Optional[str] = sb.storage.from_(STORAGE_BUCKET).get_public_url(storage_path)
-        except Exception as exc:
-            print(f"   ⚠️ Public URL fetch failed: {exc}")
-            public_url = None
+        # 2) No public URL — the bucket is private, and that is the point.
+        #
+        # `get_public_url` still RETURNS a string for a private bucket; it just
+        # builds the /object/public/ path without asking the server. Storing it
+        # would put a dead link in every row and, worse, make the data look as
+        # though the captures were world-readable. The website signs a short
+        # lived URL from `storage_path` when it needs to show one
+        # (resolveScreenshotUrl in src/utils/screenshotFiles.js).
+        public_url: Optional[str] = None
 
         # 3) Metadata insert (only if we have a developer id)
         if self._developer_id is None:
@@ -343,7 +385,7 @@ class ScreenshotCapture:
         }
 
         try:
-            result = sb.table(METADATA_TABLE).insert(row).execute()
+            result = sb.table(METADATA_TABLE).insert(supabase_session.stamp_org(row)).execute()
             if result.data:
                 print(f"   🗄️  Metadata inserted  (id: {result.data[0].get('id', '?')})")
             else:

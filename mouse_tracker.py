@@ -20,6 +20,7 @@ from enum import Enum
 import pandas as pd
 import numpy as np
 from collections import deque, defaultdict
+import supabase_session
 
 # ============================================================================
 # SUPABASE
@@ -107,13 +108,21 @@ class MouseTracker:
         developer_name:    Optional[str] = None,
         upload_interval:   int   = 60,
         pause_ctrl:        Optional[object] = None,
+        session_id:        Optional[str] = None,
     ):
         # Config
         self.idle_threshold    = idle_threshold
         self.save_summary_only = save_summary_only
         self.auto_delete_csv   = auto_delete_csv
         self.upload_interval   = upload_interval
-        self.developer_id      = developer_id   or os.getenv("DEVELOPER_ID",  "00000000-0000-0000-0000-000000000000")
+        # No all-zeros placeholder. That uuid is syntactically valid, so the
+        # insert succeeds and the row lands in the database looking normal
+        # while belonging to nobody - and it belongs to nobody in EVERY
+        # organization, so the same fake id collects rows from unrelated
+        # people. Left as None, the upload path skips the write instead of
+        # manufacturing an owner.
+        self._injected_session_id = session_id or None
+        self.developer_id      = developer_id   or os.getenv("DEVELOPER_ID") or None
         self.developer_name    = developer_name or os.getenv("DEVELOPER_NAME", "Unknown")
 
         # Optional shared pause controller (from PauseController)
@@ -164,8 +173,16 @@ class MouseTracker:
         self.max_velocity    = 0.0
         self.min_velocity    = float("inf")
 
-        # Session identity
-        self.session_id = f"mouse_session_{int(time.time() * 1000)}"
+        # Session identity — the TIMER's session id when one was supplied.
+        #
+        # This used to always be a private `mouse_session_<ms>` string. The
+        # website joins mouse_activities to the session the user actually
+        # started, with .eq("session_id", sessionId) where sessionId comes
+        # from productivity_sessions — so a private id here meant the mouse
+        # panel matched zero rows for every session ever recorded. Same for
+        # the keyboard and application trackers, which each minted their own.
+        # The standalone/CLI path keeps the generated id.
+        self.session_id = self._injected_session_id or f"mouse_session_{int(time.time() * 1000)}"
 
         # Summary dict (mirrors table columns)
         self.session_summary: Dict[str, Any] = {
@@ -284,6 +301,13 @@ class MouseTracker:
             print("⚠️  Supabase not connected — skipping upload.")
             return False
 
+        # Without a developer there is nothing to attribute the row to, and
+        # str(None) would be sent as the literal text "None" into a uuid
+        # column. Skip loudly rather than write an unusable row.
+        if not self.developer_id:
+            print("⚠️  No developer id — skipping mouse activity upload.")
+            return False
+
         label = "PERIODIC" if is_periodic else "FINAL"
         s     = self.session_summary
 
@@ -317,7 +341,7 @@ class MouseTracker:
                 response = (
                     self.supabase
                     .table("mouse_activities")
-                    .insert(payload)
+                    .insert(supabase_session.stamp_org(payload))
                     .execute()
                 )
 

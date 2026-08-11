@@ -16,6 +16,7 @@ import pandas as pd
 from pynput import keyboard
 from dotenv import load_dotenv 
 import os
+import supabase_session
 
 load_dotenv()
 # =============================================================================
@@ -830,7 +831,7 @@ class _UploadWorker:
                 # Identity - map to your schema
                 "session_id":       self._session_id,
                 "user_email":       self._developer_email or "",  # CRITICAL: maps to NOT NULL column
-                "developer_id":     self._developer_id   or "",
+                "developer_id":     self._developer_id,
                 
                 
                 # Score
@@ -862,13 +863,16 @@ class _UploadWorker:
                 "tracked_at": datetime.now().isoformat(),
             }
 
-            # [FIX-3] isolated network call — never crashes the tracker
-            if self._client:
+            # [FIX-3] isolated network call — never crashes the tracker.
+            # developer_id must be a real uuid: `or ""` used to send an empty
+            # string, which Postgres refuses to cast, so the whole upload
+            # failed at exactly the moment identity was already missing.
+            if self._client and self._developer_id:
                 try:
                     (
                         self._client     
                         .table("keyboard_stats")
-                        .insert(payload)
+                        .insert(supabase_session.stamp_org(payload))
                         .execute()
                     )
                     print(
@@ -932,9 +936,13 @@ class KeyboardTracker:
         developer_email:  str         = "",
         session_duration_seconds: int = 60,
         pause_ctrl                    = None,
+        session_id:       Optional[str] = None,
     ) -> None:
-        # [FIX-4] store identity as non-nullable strings
-        self._developer_id    = developer_id    or ""
+        # developer_id stays None when unknown rather than becoming "".
+        # It goes into a uuid column, and "" is not a uuid — coercing it to a
+        # string only moved the failure from "we have no identity" to a cast
+        # error at upload time. The upload guard checks it explicitly.
+        self._developer_id    = developer_id    or None
         self._developer_email = developer_email or ""
 
         self.config     = TrackerConfig(session_duration_seconds=session_duration_seconds)
@@ -945,7 +953,10 @@ class KeyboardTracker:
         self._analytics = _Analytics(self._tracking, self.config)
 
         self._supabase_client = supabase_client
-        self._session_id      = f"keyboard_session_{int(time.time() * 1000)}"
+        # The timer's session id when the desktop app supplied one, so
+        # keyboard_stats can be joined to the session the user started.
+        # A private `keyboard_session_<ms>` matched nothing on the dashboard.
+        self._session_id      = session_id or f"keyboard_session_{int(time.time() * 1000)}"
 
         self._uploader:       Optional[_UploadWorker] = None
         self.session_summary: dict = _empty_session_summary()

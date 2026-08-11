@@ -79,12 +79,29 @@ class AuthManager:
         supabase_session.set_tokens(access_token, refresh_token)
 
         # --- 3) Load the profile row (RLS: only the user's own developers row) -
+        #
+        # Matched on `auth_user_id`, NOT on `id`. These are two different
+        # values: `developers.id` is the profile's own primary key and
+        # `developers.auth_user_id` is the Supabase auth user. `uid` here is
+        # the auth user, so `.eq("id", uid)` matched nothing, every login
+        # fell through to an empty profile, and three things followed from
+        # that silently:
+        #
+        #   * name and company were always blank, so mouse_activities rows
+        #     carried developer_name = "".
+        #   * the status gate below read its own default, so a developer
+        #     whose account had been set inactive could still sign in.
+        #   * User.id stayed as the auth uid and was then stamped into
+        #     developer_id on mouse_activities, keyboard_stats and
+        #     screenshots, and into the screenshot storage path - none of
+        #     which the website's dashboard filters or the monitoring_read
+        #     storage policy can match, because those compare developers.id.
         profile = {}
         try:
             resp = (
                 self.supabase.table("developers")
                 .select("*")
-                .eq("id", uid)
+                .eq("auth_user_id", uid)
                 .limit(1)
                 .execute()
             )
@@ -97,9 +114,23 @@ class AuthManager:
             self.logout()
             return False, "Account is not active", None
 
+        # The identity every tracker stamps on its rows. Falls back to the
+        # auth uid when there is no developers row at all (an admin signing
+        # in to try the app, say) - tracking still works and still lands in
+        # the right organization, but it will not be attributable to a
+        # person on the dashboard, so say so rather than fail quietly.
+        app_user_id = profile.get("id") or supabase_session.app_user_id()
+        if not app_user_id:
+            app_user_id = str(uid)
+            print(
+                "⚠️  No developers profile for this account — tracking rows "
+                "will carry the auth id and may not appear under a person on "
+                "the dashboard."
+            )
+
         user_email = getattr(auth_user, "email", None) or email
         user = User(
-            id=str(uid),
+            id=str(app_user_id),
             email=user_email,
             name=profile.get("name", ""),
             company=profile.get("company", ""),
