@@ -114,19 +114,25 @@ class AuthManager:
             self.logout()
             return False, "Account is not active", None
 
-        # The identity every tracker stamps on its rows. Falls back to the
-        # auth uid when there is no developers row at all (an admin signing
-        # in to try the app, say) - tracking still works and still lands in
-        # the right organization, but it will not be attributable to a
-        # person on the dashboard, so say so rather than fail quietly.
-        app_user_id = profile.get("id") or supabase_session.app_user_id()
-        if not app_user_id:
-            app_user_id = str(uid)
-            print(
-                "⚠️  No developers profile for this account — tracking rows "
-                "will carry the auth id and may not appear under a person on "
-                "the dashboard."
-            )
+        if not profile or not profile.get("id"):
+            self.logout()
+            return False, "No active staff profile is linked to this account", None
+
+        app_user_id = profile["id"]
+        # Registration binds database writes to this verified Auth session.
+        # Failure must stop tracking rather than silently fall back to a fleet key.
+        try:
+            import platform
+            enrolled = self.supabase.rpc("enroll_tracker_device", {
+                "p_name": platform.node()[:120] or "Desktop tracker",
+                "p_platform": platform.system()[:40] or "Desktop",
+            }).execute()
+            if not enrolled.data:
+                raise RuntimeError("Device registration was not confirmed")
+            self._device_id = str(enrolled.data)
+        except Exception:
+            self.logout()
+            return False, "Device registration failed. Check your membership and device migrations, then sign in again.", None
 
         user_email = getattr(auth_user, "email", None) or email
         user = User(
@@ -143,6 +149,13 @@ class AuthManager:
 
     def logout(self):
         """Sign out of Supabase Auth and drop the shared session token."""
+        try:
+            device_id = getattr(self, "_device_id", None)
+            if device_id:
+                self.supabase.rpc("revoke_tracker_device", {"p_id": device_id}).execute()
+        except Exception:
+            pass
+        self._device_id = None
         try:
             self.supabase.auth.sign_out()
         except Exception:
