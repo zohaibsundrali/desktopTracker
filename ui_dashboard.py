@@ -12,6 +12,7 @@ _setup_timer_section) and the body of _schedule_timer_update were redesigned.
 
 import threading
 import time
+import supabase_session
 
 import customtkinter as ctk
 from tkinter import messagebox
@@ -63,6 +64,7 @@ class DashboardWindow:
 
         try:
             self.setup_ui()
+            self._load_work_options()
             self.start_timer_update()
         except Exception:
             # If the UI failed to build, shut the tracker down so its non-daemon
@@ -288,6 +290,27 @@ class DashboardWindow:
         )
         self.screenshot_policy_label.pack(anchor="w", pady=(0, 10))
 
+        self._work_generation = 0
+        self._work_locked = False
+        self._work_loading = False
+        self._work_identity = supabase_session.tracking_context()
+        self._projects = {"General tracking": None}
+        self._tasks = {"No task": None}
+        self._work_tasks = []
+        ctk.CTkLabel(body, text="Project / task (optional)", font=font(12),
+                     text_color=C("muted")).pack(anchor="w")
+        self.project_select = ctk.CTkOptionMenu(
+            body, values=list(self._projects), command=self._on_project_changed)
+        self.project_select.pack(fill="x", pady=(4, 4))
+        self.task_select = ctk.CTkOptionMenu(body, values=list(self._tasks), state="disabled")
+        self.task_select.pack(fill="x", pady=(0, 4))
+        self.work_status_label = ctk.CTkLabel(body, text="Loading assigned work…",
+            font=font(12), text_color=C("muted"), wraplength=420)
+        self.work_status_label.pack(anchor="w")
+        self.work_retry_btn = ctk.CTkButton(body, text="Refresh projects", height=26,
+                                           command=self._load_work_options)
+        self.work_retry_btn.pack(anchor="w", pady=(0, 12))
+
         # Controls row — full body width.
         controls = ctk.CTkFrame(body, fg_color="transparent")
         controls.pack(anchor="w", fill="x")
@@ -340,11 +363,9 @@ class DashboardWindow:
         self.apps_panel = self._list_panel(panels, 0, "Applications today")
         self.sites_panel = self._list_panel(panels, 1, "Websites today")
 
-        # Seed placeholder rows
-        self._seed_rows(self.apps_panel,
-                        [("VS Code", 0.8, "1h 12m"), ("Chrome", 0.5, "44m")])
-        self._seed_rows(self.sites_panel,
-                        [("github.com", 0.7, "38m"), ("stackoverflow.com", 0.4, "20m")])
+        # Real activity populates these panels after tracking begins.
+        self._seed_rows(self.apps_panel, [])
+        self._seed_rows(self.sites_panel, [])
 
     # ---- small UI helpers ----
     def _meta_block(self, parent, caption, value):
@@ -432,22 +453,101 @@ class DashboardWindow:
     # ------------------------------------------------------------------
     #  Timer Control (Thread‑Safe, Non‑Blocking) - UNCHANGED LOGIC
     # ------------------------------------------------------------------
+    def _set_work_controls(self, locked):
+        self._work_locked = locked
+        busy = locked or self._work_loading
+        self.project_select.configure(state="disabled" if busy else "normal")
+        self.task_select.configure(state="disabled" if busy or len(self._tasks) == 1 else "normal")
+        self.work_retry_btn.configure(state="disabled" if busy else "normal")
+
+    def _clear_work_options(self):
+        self._projects = {"General tracking": None}
+        self._tasks = {"No task": None}
+        self._work_tasks = []
+        self.project_select.configure(values=list(self._projects))
+        self.project_select.set("General tracking")
+        self.task_select.configure(values=list(self._tasks))
+        self.task_select.set("No task")
+
+    def _on_project_changed(self, label):
+        project_id = self._projects.get(label)
+        self._tasks = {"No task": None}
+        for row in self._work_tasks:
+            if row["project_id"] == project_id:
+                # Full IDs keep duplicate names unambiguous.
+                self._tasks[f'{row["title"]} · {row["id"]}'] = row["id"]
+        self.task_select.configure(values=list(self._tasks))
+        self.task_select.set("No task")
+        self._set_work_controls(self._work_locked)
+
+    def _load_work_options(self):
+        if not self._alive or self._work_locked:
+            return
+        self._work_generation += 1
+        generation = self._work_generation
+        identity = supabase_session.tracking_context()
+        self._work_identity = identity
+        self._clear_work_options()
+        self._work_loading = True
+        self._set_work_controls(False)
+        self.work_status_label.configure(text="Loading assigned work… General tracking is available.")
+
+        def load():
+            try:
+                options = self.timer.get_tracking_work_options()
+                error = False
+            except Exception:
+                options, error = None, True
+            def finish():
+                if (not self._alive or generation != self._work_generation
+                        or identity != supabase_session.tracking_context()):
+                    return
+                self._work_loading = False
+                # Starting a general session while loading must not alter its selection.
+                if not self._work_locked and not error:
+                    self._projects = {"General tracking": None}
+                    for row in options["projects"]:
+                        self._projects[f'{row["name"]} · {row["id"]}'] = row["id"]
+                    self._work_tasks = options["tasks"]
+                    self.project_select.configure(values=list(self._projects))
+                self.work_status_label.configure(text=(
+                    "Assigned work unavailable. Retry or use General tracking." if error else
+                    "Stop tracking before changing project or task." if self._work_locked else
+                    "Choose assigned work, or use General tracking."))
+                self._set_work_controls(self._work_locked)
+            try:
+                self.app.after(0, finish)
+            except Exception:
+                pass
+        threading.Thread(target=load, daemon=True).start()
+
     def start_timer(self):
+        if self._work_locked:
+            return
+        if self._work_identity != supabase_session.tracking_context():
+            self._clear_work_options()
+            self._load_work_options()
+            return
+        project_id = self._projects.get(self.project_select.get())
+        task_id = self._tasks.get(self.task_select.get())
+        self._set_work_controls(True)
         self.start_btn.configure(state="disabled")
-        self.pause_btn.configure(state="normal")
-        self.stop_btn.configure(state="normal")
+        self.pause_btn.configure(state="disabled")
+        self.stop_btn.configure(state="disabled")
         self.status_label.configure(text="Starting...", text_color=Colors.ACCENT_ORANGE)
         self.app.update_idletasks()
 
         def _bg_start():
             try:
-                if self.timer.start():
+                if self.timer.start(project_id=project_id, task_id=task_id):
                     self.timer_running = True
                     self.timer_paused = False
                     msg = "● Tracking Active"
                     def _ok():
                         if not self._alive or not self._dash_root.winfo_exists():
                             return
+                        self.pause_btn.configure(state="normal")
+                        self.stop_btn.configure(state="normal")
                         self.status_label.configure(text=msg, text_color=Colors.ACCENT_GREEN)
                     try:
                         self.app.after(0, _ok)
@@ -455,7 +555,7 @@ class DashboardWindow:
                         pass
                 else:
                     try:
-                        self.app.after(0, lambda: self._reset_buttons_on_error("Start failed"))
+                        self.app.after(0, lambda: self._reset_buttons_on_error(getattr(self.timer, "start_error", None) or "Start failed"))
                     except RuntimeError:
                         pass
             except Exception as exc:
@@ -590,6 +690,7 @@ class DashboardWindow:
     def _on_session_stopped(self, session, time_str):
         if not self._alive or not self._dash_root.winfo_exists():
             return
+        self._set_work_controls(False)
         self.start_btn.configure(
             text="▶ Start",
             state="normal",
@@ -610,6 +711,12 @@ class DashboardWindow:
     def _reset_buttons_on_error(self, msg):
         if not self._alive or not self._dash_root.winfo_exists():
             return
+        if self.timer_running:
+            self._set_work_controls(True)
+            self.stop_btn.configure(state="normal")
+            self.status_label.configure(text=f"Error: {msg}", text_color=Colors.ACCENT_RED)
+            return
+        self._set_work_controls(False)
         self.start_btn.configure(
             text="▶ Start",
             state="normal",
@@ -634,6 +741,14 @@ class DashboardWindow:
         try:
             self._refresh_session_sync_status()
             self._refresh_screenshot_sync_status()
+            if (hasattr(self, "project_select")
+                    and self._work_identity != supabase_session.tracking_context()):
+                self._work_generation += 1
+                self._work_identity = supabase_session.tracking_context()
+                self._work_loading = False
+                self._clear_work_options()
+                self._set_work_controls(True)
+                self.work_status_label.configure(text="Account changed. Sign out and sign in again.")
             if getattr(self.timer, "authorization_lost", False):
                 self.timer_running = False
                 self.start_btn.configure(state="disabled")

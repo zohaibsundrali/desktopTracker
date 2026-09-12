@@ -33,4 +33,9 @@ Phase 1 session-summary recovery and dashboard sync status are implemented. Fift
 
 ### Screenshot recovery slice
 
-Durable screenshot bytes, stable capture identities, phased Storage/metadata retry, current-account and pause/stop guards, plus separate dashboard screenshot-sync status are implemented in the next coordinated web/desktop release. This requires the screenshot-finalization migration before desktop rollout. Admin-versus-employee disable/blur policy is still pending and has not been silently chosen. Actual Windows/provider verification remains required.
+Durable screenshot bytes, stable capture identities, phased Storage/metadata retry, current-account and pause/stop guards, plus separate dashboard screenshot-sync status are implemented in the next coordinated web/desktop release. This requires the screenshot-finalization migration before desktop rollout. Organization screenshot policy is now implemented: Admin controls enablement and interval, while employees see policy/status and can pause the whole tracker. Optional blur remains separate future work. Actual Windows/provider verification remains required.
+
+
+### Project/task session attribution slice
+
+Desktop users can select currently authorized projects and related tasks before starting a session, or leave General tracking selected. Options load asynchronously with account/request guards; project changes reset the task, and selection remains frozen while running or paused. A failed options request exposes retry and preserves General tracking. The timer revalidates selected work before start; persisted session summaries retain the selected IDs during recovery. This is attribution of tracked sessions, not automatic timesheet submission, approvals, invoicing, or billable-hour generation. Supported-OS UI and live authorization smoke tests remain required.

@@ -17,6 +17,7 @@ import logging
 import json
 import uuid
 from session_outbox import SessionOutbox
+from tracking_work import get_tracking_work_options, validate_selection, TrackingWorkError
 from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -56,6 +57,8 @@ class TrackingSession:
     screenshots_taken: int = 0
     apps_used: str = "[]"
     app_usage_summary: str = "{}"
+    project_id: Optional[str] = None
+    task_id: Optional[str] = None
 
 
 class InstantTimer:
@@ -213,6 +216,7 @@ class TimerTracker:
         self.session_report: Optional[SessionReport] = None
         self._session_state = SessionState.IDLE
         self.authorization_lost = False
+        self.start_error = None
         self._ctx: Optional[_SessionContext] = None
 
         self.instant_timer  = InstantTimer()
@@ -283,9 +287,15 @@ class TimerTracker:
                 and self._outbox is not None
                 and supabase_session.tracking_context() == self._tracking_context)
 
-    def start(self) -> bool:
+    def get_tracking_work_options(self):
+        return get_tracking_work_options(config.SUPABASE_URL, config.SUPABASE_KEY,
+                                         self._tracking_context)
+
+    def start(self, project_id=None, task_id=None) -> bool:
         with self._api_lock:
+            self.start_error = None
             if not self._tracking_authorized():
+                self.start_error = "Your tracking login is no longer available. Sign in again."
                 return False
             if self._finalize_in_progress:
                 log.warning("start() ignored — finalization in progress")
@@ -294,6 +304,11 @@ class TimerTracker:
                 log.warning(f"start() ignored — state: {self._session_state.name}")
                 return False
             try:
+                if project_id is not None or task_id is not None:
+                    project_id, task_id = validate_selection(
+                        self.get_tracking_work_options(), project_id, task_id)
+                if not self._tracking_authorized():
+                    raise TrackingWorkError("Your login changed. Reload projects and try again.")
                 session_id = f"session_{uuid.uuid4()}"
                 ctx = _SessionContext(session_id)
                 self._ctx = ctx
@@ -307,6 +322,8 @@ class TimerTracker:
                     user_email=self.user_email,
                     start_time=datetime.now().isoformat(),
                     status="active",
+                    project_id=project_id,
+                    task_id=task_id,
                 )
 
                 self._spawn(lambda: self._tracker_lifecycle(ctx), "TrackerLifecycle")
@@ -316,6 +333,7 @@ class TimerTracker:
                 return True
 
             except Exception as e:
+                self.start_error = str(e) if isinstance(e, TrackingWorkError) else "Tracking could not start. Please try again."
                 log.error(f"start() error: {e}", exc_info=True)
                 self._session_state = SessionState.IDLE
                 if self._ctx:
@@ -464,6 +482,8 @@ class TimerTracker:
             "formatted_time":  f"{h:02d}:{m:02d}:{s:02d}",
             "session_id":      self.session.session_id if self.session else None,
             "user_email":      self.user_email,
+            "project_id": self.session.project_id if self.session else None,
+            "task_id": self.session.task_id if self.session else None,
         }
 
     def get_current_elapsed(self) -> float:
@@ -534,6 +554,9 @@ class TimerTracker:
 
     def _upload_periodic_stats(self, session_id: str) -> None:
         """Gather current stats from all trackers and insert one row into Supabase."""
+        session = self.session
+        if not session or session.session_id != session_id:
+            return
         elapsed = self.instant_timer.get_elapsed()
         now_iso = datetime.now().isoformat()
 
@@ -569,7 +592,7 @@ class TimerTracker:
         # end_time is intentionally "now" so the column is never NULL;
         # the final completed row still gets the precise stop timestamp
         # from _save_session_to_db.
-        session_start = self.session.start_time if self.session else now_iso
+        session_start = session.start_time
         p_active, p_idle = self._compute_active_idle(elapsed)
         row = {
             "session_id":       session_id,
@@ -584,6 +607,8 @@ class TimerTracker:
             "keyboard_events":  keyboard_events,
             "screenshots_taken": screenshots,
             "status":           "periodic",
+            "project_id": session.project_id,
+            "task_id": session.task_id,
             "productivity_score": 0.0,
         }
 
@@ -953,6 +978,8 @@ class TimerTracker:
                 "active_duration": session.active_duration,
                 "idle_duration": session.idle_duration,
                 "status": session.status,
+                "project_id": session.project_id,
+                "task_id": session.task_id,
                 "productivity_score": session.productivity_score,
                 "mouse_events": session.mouse_events,
                 "keyboard_events": session.keyboard_events,
