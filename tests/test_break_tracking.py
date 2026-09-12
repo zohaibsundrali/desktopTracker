@@ -55,6 +55,16 @@ class BreakCoordinatorTests(unittest.TestCase):
         self.tracker._break_tracker = BreakTracker(lambda:self.clock,
             lambda:'2026-09-12T10:00:00+00:00')
 
+    def test_presence_tracks_actual_pause_resume_stop_not_historical_status(self):
+        self.shared.set_presence_state = MagicMock()
+        t = self.tracker
+        self.assertTrue(t.pause())
+        self.assertTrue(t.resume())
+        with patch.object(self.module.threading, 'Thread'):
+            t.stop()
+        self.assertEqual([call.args for call in self.shared.set_presence_state.call_args_list],
+                         [(t._tracking_context, 'paused'), (t._tracking_context, 'tracking'), (t._tracking_context, 'idle')])
+
     def test_pause_resume_durably_checkpoint_before_workers_resume(self):
         t=self.tracker
         self.assertTrue(t.pause())

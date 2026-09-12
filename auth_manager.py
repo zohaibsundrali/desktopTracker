@@ -133,6 +133,7 @@ class AuthManager:
                 raise RuntimeError("Device registration was not confirmed")
             self._device_id = str(enrolled.data)
             supabase_session.start_device_monitor()
+            supabase_session.start_presence(config.SUPABASE_URL, config.SUPABASE_KEY)
         except Exception:
             self.logout()
             return False, "Device registration failed. Check your membership and device migrations, then sign in again.", None

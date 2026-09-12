@@ -25,7 +25,9 @@ class TrackingAttributionTests(unittest.TestCase):
         t._flush_pending_sessions = MagicMock()
 
     def test_general_tracking_does_not_require_online_options(self):
+        self.shared.set_presence_state = MagicMock()
         self.assertTrue(self.tracker.start())
+        self.shared.set_presence_state.assert_called_once_with(self.tracker._tracking_context, "tracking")
         self.tracker.get_tracking_work_options.assert_not_called()
         self.assertIsNone(self.tracker.session.project_id)
         self.assertIsNone(self.tracker.session.task_id)

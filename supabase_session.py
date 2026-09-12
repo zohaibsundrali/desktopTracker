@@ -33,6 +33,7 @@ _generation = 0
 _device_timer = None
 _device_monitoring = False
 _loss_listeners = []
+_presence = None
 
 
 def _claims(token):
@@ -128,6 +129,8 @@ def set_tokens(access_token, refresh_token=None):
             _apply(c, _access_token, _refresh_token)
         _schedule_refresh()
         _schedule_device_check()
+        if _presence is not None:
+            _presence.wake()
 
 
 def _schedule_refresh(delay=None):
@@ -248,10 +251,13 @@ def _check_device(generation):
 
 def clear():
     """Drop identity and every client's credentials, even during offline logout."""
-    global _access_token, _refresh_token, _organization_id, _app_user_id, _generation, _refresh_timer, _device_timer, _device_monitoring
+    global _access_token, _refresh_token, _organization_id, _app_user_id, _generation, _refresh_timer, _device_timer, _device_monitoring, _presence
     with _lock:
         _generation += 1
         was_signed_in = bool(_access_token)
+        if _presence is not None:
+            _presence.stop()
+            _presence = None
         _device_monitoring = False
         if _device_timer:
             _device_timer.cancel()
@@ -373,3 +379,28 @@ def session_upsert_request(client, context, row):
         # override that mutable default even if logout occurs before execute().
         request.headers['Authorization'] = 'Bearer ' + _access_token
         return request
+
+
+def _presence_snapshot():
+    with _lock:
+        context = tracking_context()
+        return (context, _access_token) if _device_monitoring and context else (None, None)
+
+
+def start_presence(project, public_key):
+    """Optional presence never blocks login or the existing activity recorder."""
+    global _presence
+    try:
+        from tracker_presence import PresenceWorker, PresenceTransport
+        with _lock:
+            if _presence is None and _device_monitoring:
+                _presence = PresenceWorker(_presence_snapshot, PresenceTransport(project, public_key))
+                _presence.start()
+    except Exception:
+        pass
+
+
+def set_presence_state(context, state):
+    with _lock:
+        if _presence is not None and context and context == tracking_context():
+            _presence.set_state(context, state)

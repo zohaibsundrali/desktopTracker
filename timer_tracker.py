@@ -299,6 +299,15 @@ class TimerTracker:
         return get_tracking_work_options(config.SUPABASE_URL, config.SUPABASE_KEY,
                                          self._tracking_context)
 
+    def _presence_state(self, state):
+        # Best effort, in memory only; no network or authentication mutation here.
+        update = getattr(supabase_session, "set_presence_state", None)
+        if callable(update):
+            try:
+                update(self._tracking_context, state)
+            except Exception:
+                pass
+
     def start(self, project_id=None, task_id=None) -> bool:
         with self._api_lock:
             self.start_error = None
@@ -342,6 +351,7 @@ class TimerTracker:
                 self._spawn(lambda: self._display_loop(ctx),      "DisplayLoop")
                 self._spawn(lambda: self._idle_reminder_loop(ctx, self._idle_reminder), "IdleReminder")
 
+                self._presence_state("tracking")
                 log.info(f"Session STARTED: {session_id}")
                 return True
 
@@ -349,6 +359,7 @@ class TimerTracker:
                 self.start_error = str(e) if isinstance(e, TrackingWorkError) else "Tracking could not start. Please try again."
                 log.error(f"start() error: {e}", exc_info=True)
                 self._session_state = SessionState.IDLE
+                self._presence_state("idle")
                 if self._ctx:
                     self._ctx.stop_event.set()
                 return False
@@ -372,6 +383,7 @@ class TimerTracker:
                     self._ctx.pause_ctrl.pause()   # ← blocks ALL worker loops
 
                 self._session_state = SessionState.PAUSED
+                self._presence_state("paused")
                 self._idle_reminder.reset(paused=True)
                 if self.session:
                     self.session.status = "paused"
@@ -411,6 +423,7 @@ class TimerTracker:
                 if self.session:
                     self.session.status = "active"
 
+                self._presence_state("tracking")
                 log.info("Session RESUMED — all worker loops running")
                 return True
 
@@ -442,6 +455,7 @@ class TimerTracker:
                 self._break_tracker.close()
                 total_elapsed       = int(round(self.instant_timer.stop()))
                 self._session_state = SessionState.IDLE
+                self._presence_state("idle")
 
                 if self.session:
                     self.session.end_time        = datetime.now().isoformat()
@@ -467,6 +481,7 @@ class TimerTracker:
             except Exception as e:
                 log.error(f"stop() error: {e}", exc_info=True)
                 self._session_state = SessionState.IDLE
+                self._presence_state("idle")
                 return None
             finally:
                 self._stop_in_progress = False

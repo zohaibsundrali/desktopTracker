@@ -41,6 +41,22 @@ class SharedSessionTests(unittest.TestCase):
         self.shared.set_tokens(token(), 'refresh-a')
         return self.shared._generation
 
+    def test_presence_refresh_keeps_worker_and_logout_stops_without_joining(self):
+        self.login()
+        worker = MagicMock()
+        self.shared._presence = worker
+        self.shared.set_tokens(token(exp=9000), 'rotated')
+        self.assertIs(self.shared._presence, worker)
+        worker.wake.assert_called_once()
+        context = self.shared.tracking_context()
+        self.shared.set_presence_state(context, 'paused')
+        worker.set_state.assert_called_once_with(context, 'paused')
+        self.shared.set_presence_state(('foreign',), 'tracking')
+        self.assertEqual(worker.set_state.call_count, 1)
+        self.shared.clear()
+        worker.stop.assert_called_once()
+        self.assertIsNone(self.shared._presence)
+
     def test_queued_request_is_fenced_by_login_and_refresh_keeps_context(self):
         self.login()
         context = self.shared.tracking_context()

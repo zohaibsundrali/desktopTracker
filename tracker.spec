@@ -25,6 +25,7 @@ hiddenimports += [
     "screenshot_upload",
     "screenshot_limits",
     "tracking_work",
+    "tracker_presence",
     "break_tracker",
     "idle_reminder",
     "activity_outbox",
