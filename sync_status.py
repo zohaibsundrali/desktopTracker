@@ -65,3 +65,19 @@ def screenshot_policy_text(status):
         return 'Screenshot policy unavailable: capture and upload held.', 'warning'
     state = 'Paused' if status.get('paused') else 'Tracking stopped' if not status.get('running') else 'Enabled by admin'
     return f'Screenshots: {state}; interval {seconds}s. Pause stops all tracking.', 'muted'
+
+
+def break_status_text(status):
+    """Breaks exclude tracked time; no paid/unpaid classification is inferred."""
+    import math
+    if not isinstance(status, dict):
+        return 'Break status unavailable', 'warning'
+    count, seconds = status.get('count'), status.get('duration_seconds')
+    if (type(count) is not int or count < 0 or type(seconds) not in (int, float)
+            or not math.isfinite(seconds) or seconds < 0 or type(status.get('paused')) is not bool):
+        return 'Break status unavailable', 'warning'
+    seconds = int(seconds)
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    state = 'On break' if status['paused'] else 'Breaks'
+    return f'{state}: {count} · {hours:02d}:{minutes:02d}:{seconds:02d} excluded from tracked time', 'muted'

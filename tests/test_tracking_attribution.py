@@ -21,7 +21,8 @@ class TrackingAttributionTests(unittest.TestCase):
         t.get_tracking_work_options = MagicMock(return_value=OPTIONS)
         t.mouse_tracker = t.keyboard_tracker = t.screenshot_capture = t.app_monitor = None
         t._compute_active_idle = lambda elapsed:(elapsed,0)
-        t._persist_session = MagicMock()
+        t._persist_session = MagicMock(return_value=True)
+        t._flush_pending_sessions = MagicMock()
 
     def test_general_tracking_does_not_require_online_options(self):
         self.assertTrue(self.tracker.start())

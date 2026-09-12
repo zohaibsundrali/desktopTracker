@@ -4,15 +4,15 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
-from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text
+from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text
 
 
 def dashboard_class(clock):
     tree = ast.parse(Path(__file__).resolve().parents[1].joinpath('ui_dashboard.py').read_text())
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DashboardWindow')
     cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in
-                ('_refresh_session_sync_status', '_refresh_screenshot_sync_status', '_schedule_timer_update')]
-    namespace = {'screenshot_policy_text': screenshot_policy_text, 'time': clock, 'session_sync_text': session_sync_text, 'screenshot_sync_text': screenshot_sync_text,
+                ('_refresh_session_sync_status', '_refresh_screenshot_sync_status', '_refresh_break_status', '_schedule_timer_update')]
+    namespace = {'break_status_text': break_status_text, 'screenshot_policy_text': screenshot_policy_text, 'time': clock, 'session_sync_text': session_sync_text, 'screenshot_sync_text': screenshot_sync_text,
                  'Colors': SimpleNamespace(ACCENT_ORANGE='orange', ACCENT_GREEN='green', ACCENT_RED='red'),
                  'C': lambda key: key}
     exec(compile(ast.fix_missing_locations(ast.Module(body=[cls], type_ignores=[])), 'ui_dashboard.py', 'exec'), namespace)
@@ -49,3 +49,10 @@ class SyncStatusUiTests(unittest.TestCase):
         dashboard.start_btn.configure.assert_called_once_with(state='disabled')
         self.assertIn('authorization ended', dashboard.status_label.configure.call_args.kwargs['text'])
         dashboard.app.after.assert_called_once()
+
+    def test_break_display_uses_cached_status(self):
+        dashboard = dashboard_class(SimpleNamespace(monotonic=lambda: 10))()
+        dashboard.timer = SimpleNamespace(get_break_status=Mock(return_value={'count': 1, 'duration_seconds': 90, 'paused': True}))
+        dashboard.break_status_label = Mock()
+        dashboard._refresh_break_status()
+        self.assertIn('On break: 1 · 00:01:30', dashboard.break_status_label.configure.call_args.kwargs['text'])

@@ -19,7 +19,8 @@ import uuid
 from session_outbox import SessionOutbox
 from tracking_work import get_tracking_work_options, validate_selection, TrackingWorkError
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from break_tracker import BreakTracker
 from enum import Enum, auto
 from typing import Optional, Dict, List
 
@@ -59,6 +60,8 @@ class TrackingSession:
     app_usage_summary: str = "{}"
     project_id: Optional[str] = None
     task_id: Optional[str] = None
+    break_periods: list = field(default_factory=list)
+    break_duration: float = 0.0
 
 
 class InstantTimer:
@@ -219,6 +222,7 @@ class TimerTracker:
         self.start_error = None
         self._ctx: Optional[_SessionContext] = None
 
+        self._break_tracker = BreakTracker()
         self.instant_timer  = InstantTimer()
         self.app_display    = AppDisplayPanel()
 
@@ -228,7 +232,7 @@ class TimerTracker:
         self.screenshot_capture = None
         self._last_screenshot_sync_status = None
 
-        self._api_lock     = threading.Lock()
+        self._api_lock     = threading.RLock()
         self._threads_lock = threading.Lock()
         self._active_threads: List[threading.Thread] = []
         self._finalize_lock = threading.Lock()
@@ -294,6 +298,7 @@ class TimerTracker:
     def start(self, project_id=None, task_id=None) -> bool:
         with self._api_lock:
             self.start_error = None
+            self.pause_error = None
             if not self._tracking_authorized():
                 self.start_error = "Your tracking login is no longer available. Sign in again."
                 return False
@@ -313,6 +318,7 @@ class TimerTracker:
                 ctx = _SessionContext(session_id)
                 self._ctx = ctx
 
+                self._break_tracker = BreakTracker()
                 self.instant_timer.start()
                 self._session_state = SessionState.RUNNING
 
@@ -346,6 +352,12 @@ class TimerTracker:
                 log.warning(f"pause() ignored — state: {self._session_state.name}")
                 return False
             try:
+                if self._break_tracker.status()["count"] >= 10000:
+                    # Never keep capturing after a pause request, even when
+                    # the database receipt size limit requires a new session.
+                    self.pause_error = "Break limit reached; session stopped. Start a new session."
+                    self.stop()
+                    return False
                 if not self.instant_timer.pause():
                     return False
 
@@ -355,6 +367,9 @@ class TimerTracker:
                 self._session_state = SessionState.PAUSED
                 if self.session:
                     self.session.status = "paused"
+                    self._break_tracker.pause()
+                    if self._checkpoint_session(self.session.session_id) is False:
+                        return False
 
                 log.info("Session PAUSED — all worker loops blocked")
                 return True
@@ -371,6 +386,12 @@ class TimerTracker:
                 log.warning(f"resume() ignored — state: {self._session_state.name}")
                 return False
             try:
+                self._break_tracker.close()
+                if self.session:
+                    self.session.status = "active"
+                    if self._checkpoint_session(self.session.session_id) is False:
+                        return False
+
                 if not self.instant_timer.resume():
                     return False
 
@@ -408,6 +429,7 @@ class TimerTracker:
                     ctx.pause_ctrl.stop()    # unblock workers → they exit their loops
                     ctx.stop_event.set()     # exit lifecycle + display loops
 
+                self._break_tracker.close()
                 total_elapsed       = int(round(self.instant_timer.stop()))
                 self._session_state = SessionState.IDLE
 
@@ -418,6 +440,11 @@ class TimerTracker:
                     self.session.active_duration = active
                     self.session.idle_duration   = idle
                     self.session.status          = "completed"
+                    self.session.break_periods, self.session.break_duration = self._break_tracker.snapshot()
+                    # Persist the terminal break boundary before returning or
+                    # spawning cleanup; a crash must not replay an open break.
+                    self._collect_session_data(self.session)
+                    self._save_session_to_db(self.session, flush=False)
 
                 completed    = self.session
                 self.session = None
@@ -486,6 +513,10 @@ class TimerTracker:
             "task_id": self.session.task_id if self.session else None,
         }
 
+    def get_break_status(self):
+        """In-memory status, retained after stop; no database or network access."""
+        return self._break_tracker.status()
+
     def get_current_elapsed(self) -> float:
         return self.instant_timer.get_elapsed()
 
@@ -553,6 +584,14 @@ class TimerTracker:
         log.info(f"PeriodicStatsUpload exiting [{ctx.session_id}]")
 
     def _upload_periodic_stats(self, session_id: str) -> None:
+        # Serialize snapshot + durable write with pause/resume/stop. Network
+        # replay stays outside the lifecycle lock to keep controls responsive.
+        with self._api_lock:
+            saved = self._checkpoint_session(session_id)
+        if saved:
+            self._flush_pending_sessions()
+
+    def _checkpoint_session(self, session_id: str):
         """Gather current stats from all trackers and insert one row into Supabase."""
         session = self.session
         if not session or session.session_id != session_id:
@@ -594,6 +633,7 @@ class TimerTracker:
         # from _save_session_to_db.
         session_start = session.start_time
         p_active, p_idle = self._compute_active_idle(elapsed)
+        session.break_periods, session.break_duration = self._break_tracker.snapshot()
         row = {
             "session_id":       session_id,
             "user_id":          self.user_id,
@@ -606,13 +646,15 @@ class TimerTracker:
             "mouse_events":     mouse_events,
             "keyboard_events":  keyboard_events,
             "screenshots_taken": screenshots,
-            "status":           "periodic",
+            "status": "paused" if session.status == "paused" else "periodic",
+            "break_periods": session.break_periods,
+            "break_duration": session.break_duration,
             "project_id": session.project_id,
             "task_id": session.task_id,
             "productivity_score": 0.0,
         }
 
-        self._persist_session(row)
+        return self._persist_session(row, flush=False)
 
     # =========================================================================
     #  TRACKER MANAGEMENT
@@ -931,7 +973,7 @@ class TimerTracker:
             "raw_seconds": round(sec, 2),
         }
 
-    def _save_session_to_db(self, session: TrackingSession) -> None:
+    def _save_session_to_db(self, session: TrackingSession, flush=True) -> None:
         row = None
         try:
             # Ensure end_time is populated even if, for any reason, it wasn't
@@ -977,6 +1019,8 @@ class TimerTracker:
                 "total_duration": session.total_duration,
                 "active_duration": session.active_duration,
                 "idle_duration": session.idle_duration,
+                "break_periods": session.break_periods,
+                "break_duration": session.break_duration,
                 "status": session.status,
                 "project_id": session.project_id,
                 "task_id": session.task_id,
@@ -987,11 +1031,11 @@ class TimerTracker:
                 # Text column now contains JSON with both apps + human durations
                 "app_usage_summary": json.dumps(enhanced_summary),
             }
-            self._persist_session(row)
+            self._persist_session(row, flush=flush)
         except Exception as e:
             log.error(f"DB save error: {e}")
 
-    def _persist_session(self, row):
+    def _persist_session(self, row, flush=True):
         """Commit before any network attempt, including periodic checkpoints."""
         try:
             if not self._outbox or not self._tracking_context:
@@ -1004,7 +1048,8 @@ class TimerTracker:
             log.exception("Could not durably queue session; stopping capture")
             self._on_authorization_lost()
             return False
-        self._flush_pending_sessions()
+        if flush:
+            self._flush_pending_sessions()
         return True
 
     def _upsert_session(self, row: dict, retries: int = 3) -> bool:
