@@ -666,7 +666,7 @@ class TimerTracker:
         if getattr(config, "SCREENSHOTS_ENABLED", True):
             try:
                 from screenshot_capture import ScreenshotCapture
-                # Capture at random intervals between 1 and 2 minutes
+                # Screenshot cadence is controlled by the organization policy
                 # (60–120 seconds) as requested.
                 self.screenshot_capture = ScreenshotCapture(
                     interval_min=60,

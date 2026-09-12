@@ -50,3 +50,18 @@ def screenshot_sync_text(status):
         except (TypeError, ValueError, AttributeError):
             return 'Screenshot sync: no pending captures', 'muted'
     return 'Screenshot sync: waiting for first saved capture', 'muted'
+
+
+def screenshot_policy_text(status):
+    if not isinstance(status, dict):
+        return 'Screenshot policy is checked when tracking starts. Pause stops all tracking.', 'muted'
+    policy = status.get('policy')
+    if not isinstance(policy, dict) or policy.get('available') is not True:
+        return 'Screenshot policy unavailable: capture and upload held. Pause stops all tracking.', 'warning'
+    if policy.get('enabled') is False:
+        return 'Screenshots disabled by admin. Saved captures remain queued.', 'muted'
+    seconds = policy.get('interval_seconds')
+    if policy.get('enabled') is not True or type(seconds) is not int or not 60 <= seconds <= 3600:
+        return 'Screenshot policy unavailable: capture and upload held.', 'warning'
+    state = 'Paused' if status.get('paused') else 'Tracking stopped' if not status.get('running') else 'Enabled by admin'
+    return f'Screenshots: {state}; interval {seconds}s. Pause stops all tracking.', 'muted'

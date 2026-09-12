@@ -33,6 +33,7 @@ class ScreenshotSyncStatusTests(unittest.TestCase):
         view=dashboard_class(clock)()
         view.timer=SimpleNamespace(get_screenshot_sync_status=Mock(return_value={'pending':1}))
         view.screenshot_sync_label=Mock()
+        view.screenshot_policy_label=Mock()
         view._refresh_screenshot_sync_status()
         view._refresh_screenshot_sync_status()
         view.timer.get_screenshot_sync_status.assert_called_once()
