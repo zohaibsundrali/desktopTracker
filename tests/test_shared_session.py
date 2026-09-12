@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def token(sub='auth-a', session='session-a', org='org-a', exp=5000):
     claims = {'sub': sub, 'session_id': session, 'exp': exp,
-              'app_metadata': {'organization_id': org, 'app_user_id': 'staff-a'}}
+              'app_metadata': {'organization_id': org, 'app_user_id': 'staff-a', 'user_type': 'developer'}}
     payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip('=')
     return 'header.' + payload + '.signature'
 
@@ -40,6 +40,21 @@ class SharedSessionTests(unittest.TestCase):
     def login(self):
         self.shared.set_tokens(token(), 'refresh-a')
         return self.shared._generation
+
+    def test_queued_request_is_fenced_by_login_and_refresh_keeps_context(self):
+        self.login()
+        context = self.shared.tracking_context()
+        row = dict(session_id='tracking-a', user_id='staff-a', organization_id='org-a')
+        request = self.shared.session_upsert_request(self.tracker, context, row)
+        request.headers.__setitem__.assert_called_with('Authorization', 'Bearer ' + token())
+        self.shared.set_tokens(token(exp=9000), 'rotated')
+        self.assertEqual(self.shared.tracking_context(), context)
+        self.assertIsNotNone(self.shared.session_upsert_request(self.tracker, context, row))
+        self.shared.set_tokens(token(session='new-login'), 'new-refresh')
+        self.assertIsNone(self.shared.session_upsert_request(self.tracker, context, row))
+        self.assertIsNone(self.shared.session_upsert_request(self.tracker, self.shared.tracking_context(), dict(row, organization_id='other')))
+        self.shared.clear()
+        self.assertIsNone(self.shared.session_upsert_request(self.tracker, context, row))
 
     def test_refresh_tokens_only_belong_to_auth_source(self):
         self.login()

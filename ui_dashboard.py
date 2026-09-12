@@ -11,11 +11,13 @@ _setup_timer_section) and the body of _schedule_timer_update were redesigned.
 """
 
 import threading
+import time
 
 import customtkinter as ctk
 from tkinter import messagebox
 
 from timer_tracker import TimerTracker
+from sync_status import session_sync_text
 from theme import (
     C, font, apply_appearance, Colors,
     Card, Pill, BigTimer, ActivityRing,
@@ -267,7 +269,13 @@ class DashboardWindow:
             body, text="Ready to track your productivity",
             font=font(13), text_color=C("muted"),
         )
-        self.status_label.pack(anchor="w", pady=(4, 14))
+        self.status_label.pack(anchor="w", pady=(4, 4))
+        self.sync_status_label = ctk.CTkLabel(
+            body, text="Session sync: checking local queue",
+            font=font(12), text_color=C("muted"), wraplength=420,
+        )
+        self.sync_status_label.pack(anchor="w", pady=(0, 14))
+        self._last_sync_status_refresh = 0.0
 
         # Controls row — full body width.
         controls = ctk.CTkFrame(body, fg_color="transparent")
@@ -613,6 +621,7 @@ class DashboardWindow:
         if self.stop_update_thread:
             return
         try:
+            self._refresh_session_sync_status()
             if getattr(self.timer, "authorization_lost", False):
                 self.timer_running = False
                 self.start_btn.configure(state="disabled")
@@ -642,6 +651,25 @@ class DashboardWindow:
             self._timer_after_id = self.app.after(100, self._schedule_timer_update)
         except Exception:
             pass
+
+    def _refresh_session_sync_status(self):
+        # Sync presentation must never interrupt authorization checks or timers.
+        try:
+            now = time.monotonic()
+            if now - getattr(self, "_last_sync_status_refresh", 0.0) < 1:
+                return
+            self._last_sync_status_refresh = now
+            # Cached snapshot only: no disk/network on Tk's thread.
+            text, tone = session_sync_text(self.timer.get_sync_status())
+            color = {"warning": Colors.ACCENT_ORANGE,
+                     "success": Colors.ACCENT_GREEN}.get(tone, C("muted"))
+            self.sync_status_label.configure(text=text, text_color=color)
+        except Exception:
+            try:
+                self.sync_status_label.configure(
+                    text="Session sync status unavailable", text_color=Colors.ACCENT_ORANGE)
+            except Exception:
+                pass
 
     def _refresh_metrics(self):
         """Best-effort refresh of the activity ring and stat tiles from get_stats()."""
