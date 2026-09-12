@@ -345,3 +345,31 @@ def access_token():
 def refresh_token():
     with _lock:
         return _refresh_token
+
+
+def tracking_context():
+    """Stable login identity; refresh rotations preserve the Auth session UUID."""
+    with _lock:
+        claims = _claims(_access_token)
+        metadata = claims.get('app_metadata') or {}
+        values = (claims.get('sub'), metadata.get('organization_id'),
+                  metadata.get('app_user_id'), metadata.get('user_type'), claims.get('session_id'))
+        if (all(isinstance(value, str) and value for value in values)
+                and values[3] in ('admin', 'developer')):
+            return values
+        return None
+
+
+def session_upsert_request(client, context, row):
+    """Bind a queued write to its login while keeping network outside the lock."""
+    with _lock:
+        if (not context or tracking_context() != context
+                or row.get('organization_id') != context[1]
+                or row.get('user_id') != context[2]):
+            return None
+        request = client.table('productivity_sessions').upsert(dict(row), on_conflict='session_id')
+        # Pinned PostgREST 0.10 shares mutable HTTP session headers. A builder
+        # alone is NOT isolated from a later login. Explicit request headers
+        # override that mutable default even if logout occurs before execute().
+        request.headers['Authorization'] = 'Bearer ' + _access_token
+        return request

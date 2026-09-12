@@ -20,6 +20,9 @@ for pkg in ("customtkinter", "supabase", "pynput", "pyautogui", "PIL"):
 
 # Extra hidden imports some deps pull in dynamically.
 hiddenimports += [
+    "session_outbox",
+    "sqlite3",
+    "_sqlite3",
     "pynput.keyboard._win32",
     "pynput.mouse._win32",
     "PIL._tkinter_finder",

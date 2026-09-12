@@ -15,6 +15,8 @@ import time
 import threading
 import logging
 import json
+import uuid
+from session_outbox import SessionOutbox
 from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -191,6 +193,7 @@ class TimerTracker:
     """
 
     def __init__(self, user_id: str, user_email: str = ""):
+        self._tracking_context = supabase_session.tracking_context()
         self.user_id    = user_id
         # No invented address. The website reads productivity_sessions by
         # `user_email` (src/hooks/activityHooks.js), so a fabricated
@@ -231,25 +234,32 @@ class TimerTracker:
         self._supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
         # Keep this client authorized as the signed-in user (RLS with anon key).
         try:
-            import supabase_session
             supabase_session.register(self._supabase)
             supabase_session.on_session_lost(self._on_authorization_lost)
         except Exception:
             pass
 
-        # Local fallback queue for sessions that fail to upload (e.g. network
-        # loss). Stored in a per-user writable dir so it works even when the app
-        # is installed under Program Files (read-only program folder).
         from config import user_data_dir
-        self._pending_path = os.path.join(user_data_dir(), ".pending_sessions.jsonl")
-        self._pending_lock = threading.Lock()
+        self._sync_status = {"pending": 0, "last_success_at": None, "error": None, "legacy_pending": False}
+        self._outbox = None
+        try:
+            if self._tracking_context and self._tracking_context[2] == str(user_id):
+                self._outbox = SessionOutbox(user_data_dir(), config.SUPABASE_URL,
+                                             self._tracking_context[:4])
+        except Exception:
+            self._sync_status["error"] = "Local session storage is unavailable"
+            log.exception("Durable session queue unavailable; tracking cannot start")
+        legacy_path = os.path.join(user_data_dir(), ".pending_sessions.jsonl")
+        if os.path.exists(legacy_path) and os.path.getsize(legacy_path):
+            self._sync_status["legacy_pending"] = True
+            log.warning("Legacy session queue preserved; explicit identity recovery required")
 
         self._shutdown_event = threading.Event()
         threading.Thread(target=self._shutdown_event.wait,
                          daemon=False, name="AppAnchorThread").start()
 
         # Re-upload any sessions queued locally by a previous run.
-        threading.Thread(target=self._flush_pending_sessions,
+        threading.Thread(target=self._pending_replay_loop,
                          daemon=True, name="PendingSessionFlush").start()
 
         log.info(f"TimerTracker ready for {self.user_email}")
@@ -269,7 +279,8 @@ class TimerTracker:
     def _tracking_authorized(self):
         import supabase_session
         return (not self.authorization_lost
-                and supabase_session.app_user_id() == str(self.user_id))
+                and self._outbox is not None
+                and supabase_session.tracking_context() == self._tracking_context)
 
     def start(self) -> bool:
         with self._api_lock:
@@ -282,7 +293,7 @@ class TimerTracker:
                 log.warning(f"start() ignored — state: {self._session_state.name}")
                 return False
             try:
-                session_id = f"session_{int(time.time() * 1000)}"
+                session_id = f"session_{uuid.uuid4()}"
                 ctx = _SessionContext(session_id)
                 self._ctx = ctx
 
@@ -575,15 +586,7 @@ class TimerTracker:
             "productivity_score": 0.0,
         }
 
-        try:
-            resp = self._supabase.table("productivity_sessions") \
-                .upsert(supabase_session.stamp_org(row), on_conflict="session_id").execute()
-            if getattr(resp, "data", None):
-                log.info(f"Periodic stats uploaded for {session_id} at {elapsed:.0f}s")
-            else:
-                log.warning(f"Periodic stats insert returned no data")
-        except Exception as e:
-            log.error(f"Periodic stats DB error: {e}")
+        self._persist_session(row)
 
     # =========================================================================
     #  TRACKER MANAGEMENT
@@ -951,76 +954,73 @@ class TimerTracker:
                 # Text column now contains JSON with both apps + human durations
                 "app_usage_summary": json.dumps(enhanced_summary),
             }
-            if self._upsert_session(row):
-                log.info(f"Session saved: {session.session_id}")
-            else:
-                # Every retry failed — persist locally so the session isn't lost.
-                self._queue_failed_session(row)
+            self._persist_session(row)
         except Exception as e:
             log.error(f"DB save error: {e}")
-            if row is not None:
-                self._queue_failed_session(row)
+
+    def _persist_session(self, row):
+        """Commit before any network attempt, including periodic checkpoints."""
+        try:
+            if not self._outbox or not self._tracking_context:
+                raise RuntimeError("No captured session identity")
+            row = dict(row, organization_id=self._tracking_context[1])
+            self._outbox.put(row)
+            self._sync_status["pending"] = self._outbox.count()
+        except Exception:
+            self._sync_status["error"] = "Local session could not be saved"
+            log.exception("Could not durably queue session; stopping capture")
+            self._on_authorization_lost()
+            return False
+        self._flush_pending_sessions()
+        return True
 
     def _upsert_session(self, row: dict, retries: int = 3) -> bool:
-        """Upsert one productivity_sessions row, retrying with backoff.
-        Returns True on success, False if every attempt failed."""
+        """Replay only the captured login; failures leave the durable row intact."""
         delay = 2.0
-        for attempt in range(1, retries + 1):
+        for attempt in range(retries):
+            if not self._tracking_authorized():
+                return False
             try:
-                resp = self._supabase.table("productivity_sessions") \
-                    .upsert(supabase_session.stamp_org(row), on_conflict="session_id").execute()
-                if getattr(resp, "data", None):
+                request = supabase_session.session_upsert_request(self._supabase, self._tracking_context, row)
+                if request is None:
+                    return False
+                response = request.execute()
+                if any(isinstance(item, dict) and item.get('session_id') == row['session_id']
+                       and item.get('organization_id') == row['organization_id']
+                       and item.get('user_id') == row['user_id']
+                       for item in (getattr(response, 'data', None) or [])):
                     return True
-                log.error(f"DB upsert no data (attempt {attempt}/{retries}) for {row.get('session_id')}")
-            except Exception as e:
-                log.error(f"DB upsert error (attempt {attempt}/{retries}) for {row.get('session_id')}: {e}")
-            if attempt < retries:
-                time.sleep(delay)
+            except Exception as error:
+                log.warning("Session upload failed; durable copy retained: %s", error)
+            if attempt < retries - 1:
+                if self._shutdown_event.wait(delay):
+                    return False
                 delay *= 2
         return False
 
-    def _queue_failed_session(self, row: dict) -> None:
-        """Append a failed row to the local queue for a later retry."""
+    def _flush_pending_sessions(self):
         try:
-            with self._pending_lock:
-                with open(self._pending_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(row) + "\n")
-            log.warning(f"Session {row.get('session_id')} queued locally for later upload")
-        except Exception as e:
-            log.error(f"Could not queue session locally: {e}")
+            if self._outbox and self._tracking_authorized():
+                uploaded = self._outbox.replay(lambda row: self._upsert_session(row, retries=1))
+                self._sync_status["pending"] = self._outbox.count()
+                if uploaded:
+                    self._sync_status["last_success_at"] = datetime.now().isoformat()
+                self._sync_status["error"] = ("A saved session needs recovery" if self._outbox.last_replay_error else
+                                              "Sessions are saved locally; upload will retry"
+                                              if self._sync_status["pending"] else None)
+        except Exception:
+            self._sync_status["error"] = "Session synchronization needs attention"
+            log.exception("Pending-session replay failed; durable records retained")
 
-    def _flush_pending_sessions(self) -> None:
-        """Re-upload locally-queued sessions; keep any that still fail."""
-        try:
-            # Atomically snapshot the queue and clear the file, so any append
-            # during the slow re-upload below is preserved, not overwritten.
-            with self._pending_lock:
-                if not os.path.exists(self._pending_path):
-                    return
-                with open(self._pending_path, "r", encoding="utf-8") as f:
-                    lines = [ln.strip() for ln in f if ln.strip()]
-                open(self._pending_path, "w", encoding="utf-8").close()  # truncate
-            if not lines:
+    def get_sync_status(self):
+        """Cached, identity-scoped status; safe for frequent UI polling."""
+        return dict(self._sync_status)
+
+    def _pending_replay_loop(self):
+        while not self._shutdown_event.is_set():
+            self._flush_pending_sessions()
+            if self._shutdown_event.wait(60):
                 return
-            remaining, uploaded = [], 0
-            for ln in lines:
-                try:
-                    row = json.loads(ln)
-                except Exception:
-                    continue  # drop an unparseable line
-                if self._upsert_session(row, retries=1):
-                    uploaded += 1
-                else:
-                    remaining.append(ln)
-            # Re-queue the ones that still failed (append under lock).
-            if remaining:
-                with self._pending_lock:
-                    with open(self._pending_path, "a", encoding="utf-8") as f:
-                        f.write("\n".join(remaining) + "\n")
-            if uploaded:
-                log.info(f"Flushed {uploaded} pending session(s); {len(remaining)} still pending")
-        except Exception as e:
-            log.error(f"Pending-session flush error: {e}")
 
     def _spawn(self, target, name: str) -> threading.Thread:
         t = threading.Thread(target=target, daemon=True, name=name)

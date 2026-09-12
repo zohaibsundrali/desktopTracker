@@ -1,0 +1,29 @@
+"""Pure presentation of session-summary sync health; contains no credentials."""
+from datetime import datetime
+
+
+def session_sync_text(status):
+    """Return user-facing text and semantic tone from a cached tracker snapshot."""
+    if not isinstance(status, dict):
+        return 'Session sync status unavailable', 'warning'
+    if status.get('error'):
+        return 'Session sync needs attention. Check connection and local storage.', 'warning'
+    pending = status.get('pending')
+    if isinstance(pending, bool) or not isinstance(pending, int) or pending < 0:
+        return 'Session sync status unavailable', 'warning'
+    if pending:
+        text = f'Session sync: {pending} saved locally, waiting to upload'
+        tone = 'warning'
+    elif status.get('last_success_at'):
+        try:
+            stamp = datetime.fromisoformat(status['last_success_at'].replace('Z', '+00:00'))
+            text = f'Last session sync: {stamp.astimezone().strftime("%H:%M:%S")}'
+        except (TypeError, ValueError, AttributeError):
+            text = 'Session sync: no pending session summaries'
+        tone = 'success'
+    else:
+        text, tone = 'Session sync: waiting for first saved session', 'muted'
+    if status.get('legacy_pending'):
+        text += '. Older local records need recovery review.'
+        tone = 'warning'
+    return text, tone
