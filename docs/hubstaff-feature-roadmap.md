@@ -43,3 +43,7 @@ Desktop users can select currently authorized projects and related tasks before 
 ### Recorded break slice
 
 Manual Pause/Resume/Stop now preserves stable break intervals and monotonic durations in the durable session checkpoint. Desktop status and web session history distinguish closed intervals from interrupted/open ones. This requires migration20260912081724_production_tracking_break_history.sql. Breaks remain excluded from tracked time; paid/unpaid classification, automatic idle deduction and idle review are separate work. Windows/hosted verification remains pending.
+
+### Advisory idle reminder slice
+
+Admin-controlled idle reminders and employee Continue/Pause choices are implemented with healthy dual-input detection and no automatic time deduction. Migration20260912083144_production_organization_idle_reminder_policy.sql is required. This does not complete idle-time correction/approval or payroll classification. Real Windows input-listener and hosted-policy verification remain pending.

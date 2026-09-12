@@ -18,7 +18,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from timer_tracker import TimerTracker
-from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text
+from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text, idle_reminder_text
 from theme import (
     C, font, apply_appearance, Colors,
     Card, Pill, BigTimer, ActivityRing,
@@ -293,6 +293,18 @@ class DashboardWindow:
         self.break_status_label = ctk.CTkLabel(body, text="Breaks: 0 · 00:00:00 excluded from tracked time",
             font=font(12), text_color=C("muted"), wraplength=420)
         self.break_status_label.pack(anchor="w", pady=(0, 10))
+
+        self.idle_status_label = ctk.CTkLabel(body, text="Idle reminder is checked when tracking starts.",
+            font=font(12), text_color=C("muted"), wraplength=420)
+        self.idle_status_label.pack(anchor="w", pady=(0, 4))
+        idle_actions = ctk.CTkFrame(body, fg_color="transparent")
+        idle_actions.pack(anchor="w", pady=(0, 10))
+        self.idle_continue_btn = ctk.CTkButton(idle_actions, text="Continue tracking", height=26,
+            state="disabled", command=self._dismiss_idle_reminder)
+        self.idle_continue_btn.pack(side="left", padx=(0, 6))
+        self.idle_pause_btn = ctk.CTkButton(idle_actions, text="Pause tracking", height=26,
+            state="disabled", command=self.pause_timer)
+        self.idle_pause_btn.pack(side="left")
 
         self._work_generation = 0
         self._work_locked = False
@@ -750,6 +762,7 @@ class DashboardWindow:
             self._refresh_session_sync_status()
             self._refresh_screenshot_sync_status()
             self._refresh_break_status()
+            self._refresh_idle_reminder()
             if (hasattr(self, "project_select")
                     and self._work_identity != supabase_session.tracking_context()):
                 self._work_generation += 1
@@ -838,6 +851,31 @@ class DashboardWindow:
                 self.break_status_label.configure(text="Break status unavailable", text_color=Colors.ACCENT_ORANGE)
             except Exception:
                 pass
+
+    def _refresh_idle_reminder(self):
+        try:
+            status = self.timer.get_idle_reminder_status()
+            text, pending = idle_reminder_text(status)
+            self.idle_status_label.configure(text=text,
+                text_color=Colors.ACCENT_ORANGE if pending else C("muted"))
+            state = "normal" if pending and self.timer_running and not self.timer_paused else "disabled"
+            self.idle_continue_btn.configure(state=state)
+            self.idle_pause_btn.configure(state=state)
+        except Exception:
+            try:
+                self.idle_status_label.configure(text="Idle reminder unavailable; tracked time is unchanged.")
+                self.idle_continue_btn.configure(state="disabled")
+                self.idle_pause_btn.configure(state="disabled")
+            except Exception:
+                pass
+
+    def _dismiss_idle_reminder(self):
+        try:
+            self.timer.dismiss_idle_reminder()
+        except Exception:
+            pass
+        finally:
+            self._refresh_idle_reminder()
 
     def _refresh_metrics(self):
         """Best-effort refresh of the activity ring and stat tiles from get_stats()."""

@@ -81,3 +81,21 @@ def break_status_text(status):
     minutes, seconds = divmod(remainder, 60)
     state = 'On break' if status['paused'] else 'Breaks'
     return f'{state}: {count} · {hours:02d}:{minutes:02d}:{seconds:02d} excluded from tracked time', 'muted'
+
+
+def idle_reminder_text(status):
+    import math
+    if not isinstance(status, dict) or status.get('available') is not True:
+        return 'Idle reminder unavailable; tracked time is unchanged.', False
+    if status.get('enabled') is False:
+        return 'Idle reminders are disabled by admin.', False
+    threshold, seconds = status.get('threshold_seconds'), status.get('idle_seconds')
+    if status.get('paused') is True:
+        return 'Idle reminder paused with tracking.', False
+    if (status.get('enabled') is not True or type(threshold) is not int or not 60 <= threshold <= 3600
+            or type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0):
+        return 'Idle detection unavailable; tracked time is unchanged.', False
+    if status.get('pending') is True:
+        return (f'No keyboard or mouse input detected for {int(seconds)}s. Continue tracking or Pause. '
+                'No time has been deducted.'), True
+    return f'Idle reminder enabled after {threshold}s without input. No automatic time deduction.', False

@@ -1056,6 +1056,14 @@ class KeyboardTracker:
     # Public statistics (full session)
     # ------------------------------------------------------------------
 
+    def get_idle_seconds(self):
+        core = self._tracking
+        with core._lock:
+            if (not core.is_tracking or core._listener is None or not core._listener.is_alive()
+                    or (core.pause_ctrl and (core.pause_ctrl.is_paused or core.pause_ctrl.is_stopped))):
+                return None
+            return max(0.0, time.monotonic() - core.last_activity)
+
     def get_stats(self) -> dict:
         if not self._tracking.events:
             return _empty_stats()
