@@ -9,6 +9,10 @@ import queue
 import random
 import threading
 import time
+import logging
+from screenshot_outbox import ScreenshotOutbox
+from screenshot_upload import upload_capture
+from screenshot_limits import MAX_SCREENSHOT_BYTES, MAX_SCREENSHOT_DIMENSION
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import List, Optional
@@ -124,6 +128,7 @@ class ScreenshotCapture:
         developer_username: Optional[str] = None,
         pause_ctrl:          Optional[object] = None,
     ):
+        self._tracking_context = supabase_session.tracking_context()
         self.interval_min = interval_min
         self.interval_max = interval_max
         self.compress     = compress
@@ -144,26 +149,44 @@ class ScreenshotCapture:
         self._total   = 0
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._capture_lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._sync_status = dict(pending=0, pending_bytes=0, last_success_at=None, error=None)
+        self._outbox = None
+        try:
+            from config import user_data_dir
+            if not self._tracking_context or self._tracking_context[2] != self._developer_id:
+                raise ValueError("Screenshot identity unavailable")
+            self._outbox = ScreenshotOutbox(user_data_dir(), SUPABASE_URL, self._tracking_context[:4])
+            self._update_sync_status()
+        except Exception:
+            self._sync_status['error'] = 'Local screenshot storage is unavailable'
+            logging.getLogger(__name__).exception('Screenshot queue initialization failed')
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     def start(self):
+        if not self._authorized() or not self._outbox:
+            return
         if self._running:
             print("⚠️  Capture is already running.")
             return
+        self._stop_event.clear()
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._running = False
-        if self._thread:
+        self._stop_event.set()
+        if self._thread and self._thread is not threading.current_thread():
             self._thread.join(timeout=3)
-        print(f"\n🛑 Capture stopped  —  {self._total} screenshots uploaded.")
+        print(f"\n🛑 Capture stopped  —  {self._total} screenshots captured.")
 
     # ── capture loop ──────────────────────────────────────────────────────────
 
     def _loop(self):
+        self._replay_pending()
         while self._running:
             if not self._wait_if_paused():
                 return
@@ -174,7 +197,8 @@ class ScreenshotCapture:
                     return
                 if not self._wait_if_paused():
                     return
-                time.sleep(1)
+                if self._stop_event.wait(1):
+                    return
             if self._running:
                 self.capture()
 
@@ -209,67 +233,102 @@ class ScreenshotCapture:
         except Exception:
             return None
 
+    def _authorized(self):
+        return bool(self._tracking_context and
+                    supabase_session.tracking_context() == self._tracking_context)
+
+    def _capture_allowed(self):
+        return (self._running and self._authorized()
+                and not bool(getattr(self.pause_ctrl, 'is_paused', False))
+                and not bool(getattr(self.pause_ctrl, 'is_stopped', False)))
+
     def capture(self, annotation: str = "") -> Optional[ScreenshotInfo]:
-        """Take one screenshot, upload to Supabase, and keep metadata in memory."""
+        """Persist an authorized image before attempting either upload phase."""
+        if not self._capture_allowed() or not self._capture_lock.acquire(blocking=False):
+            return None
         try:
-            # If paused/stopped, do nothing (no capture, no upload, no history writes).
-            # Important: do NOT block the caller here — just no-op.
-            if bool(getattr(self.pause_ctrl, "is_paused", False)) or bool(getattr(self.pause_ctrl, "is_stopped", False)):
+            if not self._capture_allowed():
                 return None
-
+            if self._sync_status['pending_bytes'] >= self._outbox.max_bytes:
+                raise OSError('Screenshot queue full')
             raw: Image.Image = pyautogui.screenshot()
-            w, h = raw.size
-            ts = datetime.now()
-            ts_str = ts.strftime("%Y%m%d_%H%M%S_%f")[:-3]  # milliseconds
-            suffix = _uuid.uuid4().hex[:8]
-
+            if not self._capture_allowed():
+                return None
+            width, height = raw.size
+            if not (0 < width <= MAX_SCREENSHOT_DIMENSION and 0 < height <= MAX_SCREENSHOT_DIMENSION):
+                self._sync_status['error'] = 'Screenshot dimensions exceed supported limits; capture stopped'
+                self._running = False
+                return None
+            timestamp = datetime.now().astimezone()
+            capture_id = str(_uuid.uuid4())
             if annotation:
                 raw = self._annotate(raw, annotation)
-
-            # Encode to bytes in-memory
-            buf = io.BytesIO()
+            buffer = io.BytesIO()
             if self.compress and not annotation:
-                filename = f"screenshot_{ts_str}_{suffix}.jpg"
-                raw.save(buf, "JPEG", optimize=True, quality=self.quality)
+                filename = f"capture_{capture_id}.jpg"
+                raw.convert('RGB').save(buffer, 'JPEG', optimize=True, quality=self.quality)
             else:
-                filename = f"screenshot_{ts_str}_{suffix}.png"
-                raw.convert("RGB").save(buf, "PNG")
-
-            image_bytes = buf.getvalue()
-            size_kb = round(len(image_bytes) / 1024, 2)
-
-            info = ScreenshotInfo(
-                timestamp=ts.isoformat(),
-                filename=filename,
-                width=w,
-                height=h,
-                size_kb=size_kb,
-                app_active=self._current_app(),
-            )
-
-            # If we were paused mid-capture, discard this screenshot and do not
-            # upload or store anything.
-            if bool(getattr(self.pause_ctrl, "is_paused", False)):
+                filename = f"capture_{capture_id}.png"
+                raw.convert('RGB').save(buffer, 'PNG')
+            data = buffer.getvalue()
+            if len(data) > MAX_SCREENSHOT_BYTES:
+                self._sync_status['error'] = 'Screenshot exceeds the 6 MiB upload limit; capture stopped'
+                self._running = False
                 return None
-
-            # Upload (non-blocking on failure)
-            info.public_url = self._upload(info, image_bytes)
-
-            # Store in-memory history
+            info = ScreenshotInfo(timestamp=timestamp.isoformat(), filename=filename,
+                                  width=width, height=height, size_kb=round(len(data)/1024, 2),
+                                  app_active=self._current_app(), annotation_text=annotation or None)
+            if not self._capture_allowed():
+                return None
+            org, developer = self._tracking_context[1:3]
+            metadata = dict(organization_id=org, developer_id=developer,
+                            developer_email=self._developer_email, filename=filename,
+                            storage_path=f'{org}/{developer}/{filename}', public_url=None,
+                            width=width, height=height, size_kb=info.size_kb,
+                            mime_type='image/jpeg' if filename.endswith('.jpg') else 'image/png',
+                            app_active=info.app_active, is_annotated=bool(annotation),
+                            annotation_text=info.annotation_text, timestamp=info.timestamp)
+            self._outbox.put(capture_id, metadata, data)
+            self._update_sync_status()
             self._screenshots.append(info)
-            if len(self._screenshots) > self.max_history:
-                self._screenshots = self._screenshots[-self.max_history:]
+            self._screenshots = self._screenshots[-self.max_history:]
             self._total += 1
-
-            print(f"✅ [{ts.strftime('%H:%M:%S')}]  {filename}  ({size_kb} KB)  {w}×{h}")
-
-            # Trigger toast notification (GUI thread shows it).
             notify_screenshot_captured()
+            self._replay_pending()
             return info
-
-        except Exception as exc:
-            print(f"⚠️  Screenshot capture error: {exc}")
+        except Exception:
+            self._sync_status['error'] = 'Screenshot could not be saved; capture stopped'
+            self._running = False
+            self._stop_event.set()
+            logging.getLogger(__name__).exception('Screenshot capture or local persistence failed')
             return None
+        finally:
+            self._capture_lock.release()
+
+    def _update_sync_status(self):
+        if self._outbox:
+            count, size, recovery = self._outbox.usage()
+            self._sync_status['pending'] = count
+            self._sync_status['pending_bytes'] = size
+            self._sync_status['error'] = ('A saved screenshot needs recovery' if recovery else
+                                          'Screenshots are saved locally; upload will retry' if count else None)
+
+    def _replay_pending(self):
+        if not self._outbox or not self._capture_allowed():
+            return
+        try:
+            uploaded = self._outbox.replay(
+                lambda *args: upload_capture(SUPABASE_URL, SUPABASE_KEY, self._tracking_context,
+                                             self._capture_allowed, *args), self._capture_allowed)
+            if uploaded:
+                self._sync_status['last_success_at'] = datetime.now().astimezone().isoformat()
+            self._update_sync_status()
+        except Exception:
+            self._sync_status['error'] = 'Screenshot synchronization needs attention'
+            logging.getLogger(__name__).exception('Screenshot replay failed; bytes retained')
+
+    def get_sync_status(self):
+        return dict(self._sync_status)
 
     # ── annotation helper ─────────────────────────────────────────────────────
 
@@ -298,102 +357,6 @@ class ScreenshotCapture:
         ImageDraw.Draw(combined).text((x + margin, y + margin),
                                       text, fill=(255, 255, 255), font=font)
         return combined
-
-    # ── Supabase upload ───────────────────────────────────────────────────────
-
-    def _upload(self, info: ScreenshotInfo, data: bytes) -> Optional[str]:
-        """Upload bytes to Supabase Storage, then insert metadata row."""
-        # Hard guarantee: never upload/save while paused.
-        if bool(getattr(self.pause_ctrl, "is_paused", False)):
-            return None
-
-        sb = _supabase_client()
-        if sb is None:
-            return None
-
-        mime = "image/jpeg" if info.filename.endswith(".jpg") else "image/png"
-
-        # `{organization_id}/{developer_id}/{filename}` — the layout the
-        # monitoring policies require and the one 019 documents:
-        #
-        #   with check (bucket_id = 'monitoring' and not auth_is_client()
-        #               and (storage.foldername(name))[1] = auth_org()::text)
-        #
-        # The LEADING folder must be the organization. It used to be the
-        # developer id, which fails that check outright — the upload is
-        # rejected, and with the service_role key that never showed up because
-        # the policy was not consulted at all.
-        # BOTH ids are required, and there is deliberately no username fallback.
-        #
-        # The website classifies an object as private-and-signable by the SHAPE
-        # of its path — `isMonitoringPath` requires a uuid in both leading
-        # segments. A path built from a username satisfies neither the policy
-        # nor the classifier, so the upload would either be refused or stored as
-        # a row the dashboard can never display. Not uploading is the honest
-        # outcome; the message below says why.
-        org = supabase_session.organization_id()
-        if not org:
-            print("   ❌ No organization on this session — not uploading.")
-            return None
-        if not self._developer_id:
-            print("   ❌ No developer id on this session — not uploading.")
-            return None
-
-        storage_path = f"{org}/{self._developer_id}/{info.filename}"
-
-        # 1) Storage upload
-        try:
-            sb.storage.from_(STORAGE_BUCKET).upload(
-                path=storage_path,
-                file=data,
-                file_options={"content-type": mime},
-            )
-        except Exception as exc:
-            print(f"   ❌ Storage upload failed: {exc}")
-            return None
-
-        # 2) No public URL — the bucket is private, and that is the point.
-        #
-        # `get_public_url` still RETURNS a string for a private bucket; it just
-        # builds the /object/public/ path without asking the server. Storing it
-        # would put a dead link in every row and, worse, make the data look as
-        # though the captures were world-readable. The website signs a short
-        # lived URL from `storage_path` when it needs to show one
-        # (resolveScreenshotUrl in src/utils/screenshotFiles.js).
-        public_url: Optional[str] = None
-
-        # 3) Metadata insert (only if we have a developer id)
-        if self._developer_id is None:
-            return public_url
-
-        is_annotated = bool(info.annotation_text)
-
-        row = {
-            "developer_id":    self._developer_id,
-            "developer_email": self._developer_email,
-            "filename":        info.filename,
-            "storage_path":    storage_path,
-            "public_url":      public_url,
-            "width":           info.width,
-            "height":          info.height,
-            "size_kb":         round(info.size_kb, 2),
-            "mime_type":       mime,
-            "app_active":      info.app_active,
-            "is_annotated":    is_annotated,
-            "annotation_text": info.annotation_text,
-            "timestamp":       info.timestamp,
-        }
-
-        try:
-            result = sb.table(METADATA_TABLE).insert(supabase_session.stamp_org(row)).execute()
-            if result.data:
-                print(f"   🗄️  Metadata inserted  (id: {result.data[0].get('id', '?')})")
-            else:
-                print("   ⚠️  Metadata insert returned no data — check RLS policies.")
-        except Exception as exc:
-            print(f"   ❌ Metadata insert failed: {exc}")
-
-        return public_url
 
     # ── stats ─────────────────────────────────────────────────────────────────
 

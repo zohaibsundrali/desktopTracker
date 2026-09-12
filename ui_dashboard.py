@@ -17,7 +17,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from timer_tracker import TimerTracker
-from sync_status import session_sync_text
+from sync_status import session_sync_text, screenshot_sync_text
 from theme import (
     C, font, apply_appearance, Colors,
     Card, Pill, BigTimer, ActivityRing,
@@ -276,6 +276,12 @@ class DashboardWindow:
         )
         self.sync_status_label.pack(anchor="w", pady=(0, 14))
         self._last_sync_status_refresh = 0.0
+        self.screenshot_sync_label = ctk.CTkLabel(
+            body, text="Screenshot sync starts with tracking",
+            font=font(12), text_color=C("muted"), wraplength=420,
+        )
+        self.screenshot_sync_label.pack(anchor="w", pady=(0, 10))
+        self._last_screenshot_status_refresh = 0.0
 
         # Controls row — full body width.
         controls = ctk.CTkFrame(body, fg_color="transparent")
@@ -622,6 +628,7 @@ class DashboardWindow:
             return
         try:
             self._refresh_session_sync_status()
+            self._refresh_screenshot_sync_status()
             if getattr(self.timer, "authorization_lost", False):
                 self.timer_running = False
                 self.start_btn.configure(state="disabled")
@@ -668,6 +675,23 @@ class DashboardWindow:
             try:
                 self.sync_status_label.configure(
                     text="Session sync status unavailable", text_color=Colors.ACCENT_ORANGE)
+            except Exception:
+                pass
+
+    def _refresh_screenshot_sync_status(self):
+        try:
+            now = time.monotonic()
+            if now - getattr(self, "_last_screenshot_status_refresh", 0.0) < 1:
+                return
+            self._last_screenshot_status_refresh = now
+            text, tone = screenshot_sync_text(self.timer.get_screenshot_sync_status())
+            color = {"warning": Colors.ACCENT_ORANGE,
+                     "success": Colors.ACCENT_GREEN}.get(tone, C("muted"))
+            self.screenshot_sync_label.configure(text=text, text_color=color)
+        except Exception:
+            try:
+                self.screenshot_sync_label.configure(
+                    text="Screenshot sync status unavailable", text_color=Colors.ACCENT_ORANGE)
             except Exception:
                 pass
 

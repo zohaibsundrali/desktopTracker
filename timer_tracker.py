@@ -222,6 +222,7 @@ class TimerTracker:
         self.mouse_tracker      = None
         self.keyboard_tracker   = None
         self.screenshot_capture = None
+        self._last_screenshot_sync_status = None
 
         self._api_lock     = threading.Lock()
         self._threads_lock = threading.Lock()
@@ -727,6 +728,11 @@ class TimerTracker:
                 except Exception as e:
                     log.error(f"{label} stop error: {e}")
                 finally:
+                    if attr == "screenshot_capture":
+                        try:
+                            self._last_screenshot_sync_status = obj.get_sync_status()
+                        except Exception:
+                            self._last_screenshot_sync_status = {"error": "Screenshot status unavailable"}
                     setattr(self, attr, None)
         # KeyboardTracker: stop tracking core + uploader
         kt = self.keyboard_tracker
@@ -1011,6 +1017,17 @@ class TimerTracker:
         except Exception:
             self._sync_status["error"] = "Session synchronization needs attention"
             log.exception("Pending-session replay failed; durable records retained")
+
+    def get_screenshot_sync_status(self):
+        """Read cached status only; stopped queues remain visible until restart."""
+        capture = self.screenshot_capture
+        if capture is not None:
+            try:
+                self._last_screenshot_sync_status = capture.get_sync_status()
+            except Exception:
+                return {"error": "Screenshot status unavailable"}
+        state = self._last_screenshot_sync_status
+        return dict(state) if state is not None else None
 
     def get_sync_status(self):
         """Cached, identity-scoped status; safe for frequent UI polling."""
