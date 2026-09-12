@@ -209,6 +209,7 @@ class TimerTracker:
         self.session: Optional[TrackingSession] = None
         self.session_report: Optional[SessionReport] = None
         self._session_state = SessionState.IDLE
+        self.authorization_lost = False
         self._ctx: Optional[_SessionContext] = None
 
         self.instant_timer  = InstantTimer()
@@ -232,6 +233,7 @@ class TimerTracker:
         try:
             import supabase_session
             supabase_session.register(self._supabase)
+            supabase_session.on_session_lost(self._on_authorization_lost)
         except Exception:
             pass
 
@@ -256,8 +258,23 @@ class TimerTracker:
     #  PUBLIC API
     # =========================================================================
 
+    def _on_authorization_lost(self):
+        self.authorization_lost = True
+        ctx = self._ctx
+        if ctx:
+            ctx.pause_ctrl.stop()
+            ctx.stop_event.set()
+        self.stop()
+
+    def _tracking_authorized(self):
+        import supabase_session
+        return (not self.authorization_lost
+                and supabase_session.app_user_id() == str(self.user_id))
+
     def start(self) -> bool:
         with self._api_lock:
+            if not self._tracking_authorized():
+                return False
             if self._finalize_in_progress:
                 log.warning("start() ignored — finalization in progress")
                 return False
@@ -318,6 +335,8 @@ class TimerTracker:
 
     def resume(self) -> bool:
         with self._api_lock:
+            if not self._tracking_authorized():
+                return False
             if self._session_state != SessionState.PAUSED:
                 log.warning(f"resume() ignored — state: {self._session_state.name}")
                 return False

@@ -7,6 +7,8 @@
 # Account creation is ADMIN-ONLY (see admin_create_user.py). The desktop app
 # only signs in — register_user() is intentionally disabled here.
 from datetime import datetime
+import threading
+from device_logout import cleanup_session
 from supabase import create_client
 from config import config
 from dataclasses import dataclass
@@ -30,7 +32,7 @@ class AuthManager:
     def __init__(self):
         self.supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
         # Keep this client authorized alongside the trackers.
-        supabase_session.register(self.supabase)
+        supabase_session.register(self.supabase, auth_source=True)
         self.current_user: Optional[User] = None
 
     def register_user(self, *args, **kwargs) -> Tuple[bool, str]:
@@ -130,6 +132,7 @@ class AuthManager:
             if not enrolled.data:
                 raise RuntimeError("Device registration was not confirmed")
             self._device_id = str(enrolled.data)
+            supabase_session.start_device_monitor()
         except Exception:
             self.logout()
             return False, "Device registration failed. Check your membership and device migrations, then sign in again.", None
@@ -148,20 +151,18 @@ class AuthManager:
         return True, "Login successful", user
 
     def logout(self):
-        """Sign out of Supabase Auth and drop the shared session token."""
-        try:
-            device_id = getattr(self, "_device_id", None)
-            if device_id:
-                self.supabase.rpc("revoke_tracker_device", {"p_id": device_id}).execute()
-        except Exception:
-            pass
+        """Stop local authorization immediately; clean up only the old session."""
+        access = supabase_session.access_token()
+        device_id = getattr(self, "_device_id", None)
         self._device_id = None
-        try:
-            self.supabase.auth.sign_out()
-        except Exception:
-            pass
-        supabase_session.clear()
         self.current_user = None
+        supabase_session.clear()
+        if access:
+            threading.Thread(
+                target=cleanup_session,
+                args=(config.SUPABASE_URL, config.SUPABASE_KEY, access, device_id),
+                daemon=True, name="DesktopSessionLogout",
+            ).start()
 
     def get_current_user(self) -> Optional[User]:
         """Get currently logged in user"""
