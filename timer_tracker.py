@@ -233,6 +233,7 @@ class TimerTracker:
         self.keyboard_tracker   = None
         self.screenshot_capture = None
         self._last_screenshot_sync_status = None
+        self._last_activity_sync_status = None
 
         self._api_lock     = threading.RLock()
         self._threads_lock = threading.Lock()
@@ -712,6 +713,7 @@ class TimerTracker:
             # That column is how the dashboard joins them; each tracker used
             # to mint its own, so every panel matched zero rows.
             self.app_monitor = AppMonitor(
+                tracking_context=self._tracking_context,
                 user_email=self.user_email,
                 pause_ctrl=ctx.pause_ctrl,
                 session_id=ctx.session_id,
@@ -833,6 +835,11 @@ class TimerTracker:
                 except Exception as e:
                     log.error(f"{label} stop error: {e}")
                 finally:
+                    if attr == "app_monitor":
+                        try:
+                            self._last_activity_sync_status = obj.get_sync_status()
+                        except Exception:
+                            self._last_activity_sync_status = {"error": "Activity status unavailable"}
                     if attr == "screenshot_capture":
                         try:
                             self._last_screenshot_sync_status = obj.get_sync_status()
@@ -1127,6 +1134,17 @@ class TimerTracker:
         except Exception:
             self._sync_status["error"] = "Session synchronization needs attention"
             log.exception("Pending-session replay failed; durable records retained")
+
+    def get_activity_sync_status(self):
+        """Read cached app/site status, including queued snapshots after stop."""
+        monitor = self.app_monitor
+        if monitor is not None:
+            try:
+                self._last_activity_sync_status = monitor.get_sync_status()
+            except Exception:
+                return {"error": "Activity status unavailable"}
+        state = self._last_activity_sync_status
+        return dict(state) if state is not None else None
 
     def get_screenshot_sync_status(self):
         """Read cached status only; stopped queues remain visible until restart."""
