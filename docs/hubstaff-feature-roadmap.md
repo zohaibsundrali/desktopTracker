@@ -39,3 +39,7 @@ Durable screenshot bytes, stable capture identities, phased Storage/metadata ret
 ### Project/task session attribution slice
 
 Desktop users can select currently authorized projects and related tasks before starting a session, or leave General tracking selected. Options load asynchronously with account/request guards; project changes reset the task, and selection remains frozen while running or paused. A failed options request exposes retry and preserves General tracking. The timer revalidates selected work before start; persisted session summaries retain the selected IDs during recovery. This is attribution of tracked sessions, not automatic timesheet submission, approvals, invoicing, or billable-hour generation. Supported-OS UI and live authorization smoke tests remain required.
+
+### Recorded break slice
+
+Manual Pause/Resume/Stop now preserves stable break intervals and monotonic durations in the durable session checkpoint. Desktop status and web session history distinguish closed intervals from interrupted/open ones. This requires migration20260912081724_production_tracking_break_history.sql. Breaks remain excluded from tracked time; paid/unpaid classification, automatic idle deduction and idle review are separate work. Windows/hosted verification remains pending.

@@ -18,7 +18,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from timer_tracker import TimerTracker
-from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text
+from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text
 from theme import (
     C, font, apply_appearance, Colors,
     Card, Pill, BigTimer, ActivityRing,
@@ -289,6 +289,10 @@ class DashboardWindow:
             font=font(12), text_color=C("muted"), wraplength=420,
         )
         self.screenshot_policy_label.pack(anchor="w", pady=(0, 10))
+
+        self.break_status_label = ctk.CTkLabel(body, text="Breaks: 0 · 00:00:00 excluded from tracked time",
+            font=font(12), text_color=C("muted"), wraplength=420)
+        self.break_status_label.pack(anchor="w", pady=(0, 10))
 
         self._work_generation = 0
         self._work_locked = False
@@ -592,7 +596,11 @@ class DashboardWindow:
                         pass
                 else:
                     try:
-                        self.app.after(0, lambda: self._reset_buttons_on_error("Pause failed"))
+                        pause_error = getattr(self.timer, "pause_error", None)
+                        if pause_error:
+                            self.timer_running = False
+                            self.timer_paused = False
+                        self.app.after(0, lambda message=pause_error or "Pause failed": self._reset_buttons_on_error(message))
                     except RuntimeError:
                         pass
             except Exception as exc:
@@ -741,6 +749,7 @@ class DashboardWindow:
         try:
             self._refresh_session_sync_status()
             self._refresh_screenshot_sync_status()
+            self._refresh_break_status()
             if (hasattr(self, "project_select")
                     and self._work_identity != supabase_session.tracking_context()):
                 self._work_generation += 1
@@ -816,6 +825,17 @@ class DashboardWindow:
             try:
                 self.screenshot_sync_label.configure(
                     text="Screenshot sync status unavailable", text_color=Colors.ACCENT_ORANGE)
+            except Exception:
+                pass
+
+    def _refresh_break_status(self):
+        try:
+            text, tone = break_status_text(self.timer.get_break_status())
+            self.break_status_label.configure(text=text,
+                text_color=Colors.ACCENT_ORANGE if tone == "warning" else C("muted"))
+        except Exception:
+            try:
+                self.break_status_label.configure(text="Break status unavailable", text_color=Colors.ACCENT_ORANGE)
             except Exception:
                 pass
 
