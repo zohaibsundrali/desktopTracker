@@ -18,7 +18,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from timer_tracker import TimerTracker
-from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text, idle_reminder_text, activity_sync_text
+from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text, idle_reminder_text, activity_sync_text, input_sync_text
 from theme import (
     C, font, apply_appearance, Colors,
     Card, Pill, BigTimer, ActivityRing,
@@ -309,6 +309,9 @@ class DashboardWindow:
         self.activity_sync_label = ctk.CTkLabel(body, text="App/site sync starts with tracking",
             font=font(12), text_color=C("muted"), wraplength=420)
         self.activity_sync_label.pack(anchor="w", pady=(0, 10))
+        self.input_sync_label = ctk.CTkLabel(body, text="Keyboard/mouse sync starts with tracking",
+            font=("Segoe UI", 11), text_color=C("muted"), wraplength=330, justify="left")
+        self.input_sync_label.pack(anchor="w", pady=(0, 10))
 
         self._work_generation = 0
         self._work_locked = False
@@ -768,6 +771,7 @@ class DashboardWindow:
             self._refresh_break_status()
             self._refresh_idle_reminder()
             self._refresh_activity_sync()
+            self._refresh_input_sync()
             if (hasattr(self, "project_select")
                     and self._work_identity != supabase_session.tracking_context()):
                 self._work_generation += 1
@@ -894,6 +898,21 @@ class DashboardWindow:
         except Exception:
             try:
                 self.activity_sync_label.configure(text="App/site sync status unavailable", text_color=Colors.ACCENT_ORANGE)
+            except Exception:
+                pass
+
+    def _refresh_input_sync(self):
+        try:
+            now = time.monotonic()
+            if now - getattr(self, "_last_input_sync_refresh", 0) < 1:
+                return
+            self._last_input_sync_refresh = now
+            text, tone = input_sync_text(self.timer.get_input_sync_status())
+            self.input_sync_label.configure(text=text,
+                text_color=Colors.ACCENT_ORANGE if tone == "warning" else C("muted"))
+        except Exception:
+            try:
+                self.input_sync_label.configure(text="Keyboard/mouse sync status unavailable", text_color=Colors.ACCENT_ORANGE)
             except Exception:
                 pass
 

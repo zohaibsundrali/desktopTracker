@@ -234,6 +234,7 @@ class TimerTracker:
         self.screenshot_capture = None
         self._last_screenshot_sync_status = None
         self._last_activity_sync_status = None
+        self._last_input_sync_status = {"keyboard": None, "mouse": None}
 
         self._api_lock     = threading.RLock()
         self._threads_lock = threading.Lock()
@@ -736,11 +737,13 @@ class TimerTracker:
                 developer_name=self.user_email,
                 pause_ctrl=ctx.pause_ctrl,
                 session_id=ctx.session_id,
+                tracking_context=self._tracking_context,
             )
             self.mouse_tracker.start()
             log.info("MouseTracker started")
         except Exception as e:
             log.error(f"MouseTracker init: {e}")
+            self._last_input_sync_status["mouse"] = {"pending": 0, "error": "Mouse tracking unavailable"}
             self.mouse_tracker = None
 
         if ctx.stop_event.is_set():
@@ -755,6 +758,7 @@ class TimerTracker:
                 developer_email=self.user_email,
                 pause_ctrl=ctx.pause_ctrl,
                 session_id=ctx.session_id,
+                tracking_context=self._tracking_context,
             )
             # start_tracking() blocks, so run the listener in a background thread
             self._spawn(
@@ -764,6 +768,7 @@ class TimerTracker:
             log.info("KeyboardTracker started")
         except Exception as e:
             log.error(f"KeyboardTracker init: {e}")
+            self._last_input_sync_status["keyboard"] = {"pending": 0, "error": "Keyboard tracking unavailable"}
             self.keyboard_tracker = None
 
         if ctx.stop_event.is_set():
@@ -798,7 +803,7 @@ class TimerTracker:
             from keyboard_tracker import _empty_session_summary as _kb_empty_summary
 
             kt = self.keyboard_tracker
-            if kt is None:
+            if kt is None or kt._input_sync is None:
                 return
             kt.session_summary = _kb_empty_summary()
             kt.session_summary["start_time"] = datetime.now().isoformat()
@@ -813,6 +818,7 @@ class TimerTracker:
                 developer_id=kt._developer_id,
                 developer_email=kt._developer_email,
                 interval_seconds=kt.config.session_duration_seconds,
+                input_sync=kt._input_sync,
             )
             kt._uploader.start()
             # Wait until session stops
@@ -835,6 +841,11 @@ class TimerTracker:
                 except Exception as e:
                     log.error(f"{label} stop error: {e}")
                 finally:
+                    if attr == "mouse_tracker":
+                        try:
+                            self._last_input_sync_status["mouse"] = obj.get_sync_status()
+                        except Exception:
+                            self._last_input_sync_status["mouse"] = {"error": "Input status unavailable"}
                     if attr == "app_monitor":
                         try:
                             self._last_activity_sync_status = obj.get_sync_status()
@@ -857,6 +868,10 @@ class TimerTracker:
             except Exception as e:
                 log.error(f"KeyboardTracker stop error: {e}")
             finally:
+                try:
+                    self._last_input_sync_status["keyboard"] = kt.get_sync_status()
+                except Exception:
+                    self._last_input_sync_status["keyboard"] = {"error": "Input status unavailable"}
                 self.keyboard_tracker = None
         log.info("All trackers destroyed")
 
@@ -1134,6 +1149,18 @@ class TimerTracker:
         except Exception:
             self._sync_status["error"] = "Session synchronization needs attention"
             log.exception("Pending-session replay failed; durable records retained")
+
+    def get_input_sync_status(self):
+        """Read only cached worker status, retaining each kind after stop."""
+        for kind, attr in (("keyboard", "keyboard_tracker"), ("mouse", "mouse_tracker")):
+            worker = getattr(self, attr, None)
+            if worker is not None:
+                try:
+                    self._last_input_sync_status[kind] = worker.get_sync_status()
+                except Exception:
+                    self._last_input_sync_status[kind] = {"error": "Input status unavailable"}
+        return {kind: dict(state) if state is not None else None
+                for kind, state in self._last_input_sync_status.items()}
 
     def get_activity_sync_status(self):
         """Read cached app/site status, including queued snapshots after stop."""

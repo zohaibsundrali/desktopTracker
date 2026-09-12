@@ -116,3 +116,19 @@ def activity_sync_text(status):
     if status.get('last_success_at'):
         return 'App/site sync: latest queued snapshots confirmed', 'success'
     return 'App/site sync: waiting for first saved snapshot', 'muted'
+
+
+def input_sync_text(status):
+    """Summarize aggregate delivery without exposing worker error contents."""
+    if status is None:
+        return 'Keyboard/mouse sync starts with tracking', 'muted'
+    if not isinstance(status, dict):
+        return 'Keyboard/mouse sync status unavailable', 'warning'
+    messages = []
+    tones = []
+    for kind, label in (('keyboard', 'Keyboard'), ('mouse', 'Mouse')):
+        text, tone = activity_sync_text(status.get(kind))
+        messages.append(text.replace('App/site', label).replace('snapshots', 'batches').replace('snapshot', 'batch'))
+        tones.append(tone)
+    tone = 'warning' if 'warning' in tones else ('success' if all(t == 'success' for t in tones) else 'muted')
+    return '\n'.join(messages), tone

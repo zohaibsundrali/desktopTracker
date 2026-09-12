@@ -51,3 +51,7 @@ Admin-controlled idle reminders and employee Continue/Pause choices are implemen
 ### App/site recovery slice
 
 Cumulative app/site snapshots now use an identity-scoped durable queue, revision receipts and explicit sync status. Acknowledged payload content is compacted. Per-poll checkpoints and bounded stop replay protect saved data; pending snapshots continue on the next authorized tracking session. Requires activity aggregate preflight and migration20260912084740_production_activity_aggregate_receipts.sql. Detailed mouse/keyboard telemetry offline persistence and Windows/provider verification remain separate work.
+
+### Keyboard and mouse recovery slice
+
+Aggregate input batches now queue locally with stable capture IDs before upload, preserving existing window/percentage report semantics. Confirmation status is shown separately for keyboard and mouse. Local-save failures stop affected input capture, and retries remain bound to the original identity. This protects saved aggregate batches, not unsaved raw events before a crash. Apply migration `20260912093359_production_input_capture_receipts.sql` before desktop rollout; real Windows/provider tests remain required.
