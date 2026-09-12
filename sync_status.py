@@ -99,3 +99,20 @@ def idle_reminder_text(status):
         return (f'No keyboard or mouse input detected for {int(seconds)}s. Continue tracking or Pause. '
                 'No time has been deducted.'), True
     return f'Idle reminder enabled after {threshold}s without input. No automatic time deduction.', False
+
+
+def activity_sync_text(status):
+    if status is None:
+        return 'App/site sync starts with tracking', 'muted'
+    if not isinstance(status, dict):
+        return 'App/site sync status unavailable', 'warning'
+    pending = status.get('pending')
+    if type(pending) is not int or pending < 0:
+        return 'App/site sync status unavailable', 'warning'
+    if status.get('error'):
+        return f'App/site sync needs attention ({pending} queued). Check connection and local storage.', 'warning'
+    if pending:
+        return f'App/site sync: {pending} snapshots saved locally, awaiting confirmation', 'warning'
+    if status.get('last_success_at'):
+        return 'App/site sync: latest queued snapshots confirmed', 'success'
+    return 'App/site sync: waiting for first saved snapshot', 'muted'

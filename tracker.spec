@@ -27,6 +27,8 @@ hiddenimports += [
     "tracking_work",
     "break_tracker",
     "idle_reminder",
+    "activity_outbox",
+    "activity_upload",
     "screenshot_policy",
     "sqlite3",
     "_sqlite3",

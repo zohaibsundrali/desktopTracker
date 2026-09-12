@@ -47,3 +47,7 @@ Manual Pause/Resume/Stop now preserves stable break intervals and monotonic dura
 ### Advisory idle reminder slice
 
 Admin-controlled idle reminders and employee Continue/Pause choices are implemented with healthy dual-input detection and no automatic time deduction. Migration20260912083144_production_organization_idle_reminder_policy.sql is required. This does not complete idle-time correction/approval or payroll classification. Real Windows input-listener and hosted-policy verification remain pending.
+
+### App/site recovery slice
+
+Cumulative app/site snapshots now use an identity-scoped durable queue, revision receipts and explicit sync status. Acknowledged payload content is compacted. Per-poll checkpoints and bounded stop replay protect saved data; pending snapshots continue on the next authorized tracking session. Requires activity aggregate preflight and migration20260912084740_production_activity_aggregate_receipts.sql. Detailed mouse/keyboard telemetry offline persistence and Windows/provider verification remain separate work.

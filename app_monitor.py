@@ -328,292 +328,139 @@ class AppSession:
 
 
 class CloudDB:
-    def __init__(self):
-        self._client = None
-        self._has_user_login: bool = True
-        self._connect()
-
-    def _connect(self) -> None:
-        if not _SUPABASE_OK:
-            log.warning("supabase-py not installed — install it with: pip install supabase")
-            return
-        url = os.getenv("SUPABASE_URL", "").strip()
-        key = os.getenv("SUPABASE_KEY", "").strip()
-        if not url or not key:
-            log.warning("SUPABASE_URL / SUPABASE_KEY not set — set them in .env")
-            return
+    """Local durable aggregates with a separate identity-bound replay worker."""
+    def __init__(self, context=None, pause_ctrl=None):
+        from config import config, user_data_dir
+        from activity_outbox import ActivityOutbox
+        self.context = context
+        self.pause_ctrl = pause_ctrl
+        self.project, self.public_key = config.SUPABASE_URL, config.SUPABASE_KEY
+        self._queue = None
+        self.local_failed = False
+        self._stop = threading.Event()
+        self._worker = None
+        self._status = dict(pending=0,error=None,last_success_at=None)
         try:
-            self._client = create_client(url, key)
-            # Keep this client authorized as the signed-in user (RLS/anon key).
-            try:
-                import supabase_session
-                supabase_session.register(self._client)
-            except Exception:
-                pass
-            log.info("Supabase connected")
-        except Exception as exc:
-            log.warning("Supabase connection failed: %s", exc)
+            if context:
+                self._queue = ActivityOutbox(user_data_dir(),self.project,context[:4])
+                self._status['pending'] = self._queue.count()
+            else:
+                self._status['error'] = 'Activity login is unavailable'
+        except Exception:
+            self._status['error'] = 'Local activity storage is unavailable'
+            log.exception('Activity queue initialization failed')
 
     @property
-    def available(self) -> bool:
-        return self._client is not None
+    def available(self):
+        return self._queue is not None
 
-    def save(self, sessions: List[AppSession],
-             user_login: str, user_email: str, session_id: str,
-             error_tracker: Optional['ErrorTracker'] = None) -> int:
-        if not self.available:
-            if error_tracker:
-                error_tracker.alert('critical', 'Supabase client not available')
-            return 0
+    def allowed(self, final=False):
+        return ((final or not self._stop.is_set()) and self.context is not None
+                and supabase_session.tracking_context()==self.context
+                and (final or not (self.pause_ctrl and
+                         (self.pause_ctrl.is_paused or self.pause_ctrl.is_stopped))))
 
-        pending = [s for s in sessions if not s.saved_cloud]
-        if not pending:
-            return 0
+    def start(self):
+        if self._worker is None:
+            self._worker=threading.Thread(target=self._replay_loop,name='ActivityReplay',daemon=True)
+            self._worker.start()
 
-        for session in pending:
-            if not session.app_name or not session.start_time:
-                if error_tracker:
-                    error_tracker.log_error('app_detection', session.app_name,
-                                            'Invalid session data',
-                                            'Missing required fields')
-                log.warning(f"Skipping invalid session: {session}")
-                session.saved_cloud = True
+    def stop(self):
+        self._stop.set()
 
-        records = [s.to_cloud_dict(user_login, user_email, session_id)
-                   for s in pending if not s.saved_cloud]
+    def get_sync_status(self):
+        return dict(self._status)
 
-        if not records:
-            return 0
+    def _replay_loop(self):
+        while not self._stop.is_set():
+            self.replay()
+            self._stop.wait(10)
 
-        if not self._has_user_login:
-            for r in records:
-                r.pop("user_login", None)
+    def replay(self, final=False):
+        from activity_upload import upload_activity
+        if not self._queue or not self.allowed(final):
+            return
+        try:
+            uploaded=self._queue.replay(lambda kind,row,revision:upload_activity(
+                self.project,self.public_key,self.context,kind,row,revision,lambda:self.allowed(final)),
+                limit=1 if final else 100)
+            self._status['pending']=self._queue.count()
+            if uploaded:
+                self._status['last_success_at']=datetime.now().isoformat()
+            self._status['error']=('App/site capture stopped: local storage needs attention' if self.local_failed else
+                'Saved activity needs recovery' if self._queue.last_replay_error else
+                'Activity saved locally; upload will retry' if self._status['pending'] else None)
+        except Exception:
+            self._status['error']='Activity synchronization needs attention'
+            log.exception('Activity replay failed; saved rows retained')
 
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                resp = self._client.table("app_usage").insert(supabase_session.stamp_org(records)).execute()
+    @staticmethod
+    def _utc(value):
+        from datetime import timezone
+        return value.astimezone(timezone.utc).isoformat()
 
-                if getattr(resp, "data", None):
-                    for s in pending:
-                        if not s.saved_cloud:
-                            s.saved_cloud = True
-                    if error_tracker:
-                        error_tracker.log_supabase_success(len(pending))
-                    else:
-                        log.info(f"Supabase: synced {len(pending)} app session(s)")
-                    return len(pending)
+    def _put(self,kind,row):
+        if not self._queue or not self.context:
+            self.local_failed=True
+            self._status['error']='App/site capture stopped: local storage is unavailable'
+            return False
+        try:
+            self._queue.put(kind,dict(row,organization_id=self.context[1]))
+            self._status['pending']=self._queue.count()
+            return True
+        except Exception:
+            self.local_failed=True
+            self._status['error']='App/site capture stopped: activity could not be saved locally'
+            log.exception('Local activity checkpoint failed')
+            return False
 
-                if error_tracker:
-                    error_tracker.log_supabase_failure(
-                        [s.app_name for s in pending],
-                        "Insert returned no data", attempt)
-                else:
-                    log.warning(f"Supabase insert returned no data (attempt {attempt})")
-
-                if attempt < MAX_RETRIES:
-                    wait_time = RETRY_BACKOFF ** attempt
-                    log.info(f"Retrying in {wait_time:.1f}s...")
-                    time.sleep(wait_time)
-                    continue
-
-                return 0
-
-            except Exception as exc:
-                err = str(exc)
-
-                if "PGRST204" in err and "user_login" in err:
-                    if self._has_user_login:
-                        self._has_user_login = False
-                        log.warning("user_login column missing — retrying without it...")
-                        for r in records:
-                            r.pop("user_login", None)
-                        try:
-                            resp2 = self._client.table("app_usage").insert(supabase_session.stamp_org(records)).execute()
-                            if getattr(resp2, "data", None):
-                                for s in pending:
-                                    if not s.saved_cloud:
-                                        s.saved_cloud = True
-                                if error_tracker:
-                                    error_tracker.log_supabase_success(len(pending))
-                                else:
-                                    log.info(f"Supabase: synced {len(pending)} app session(s)")
-                                return len(pending)
-                        except Exception as exc2:
-                            log.error(f"Column removal retry failed: {exc2}")
-
-                elif "ConnectionError" in str(type(exc)) or "timeout" in err.lower():
-                    if error_tracker:
-                        error_tracker.log_supabase_failure(
-                            [s.app_name for s in pending],
-                            f"Connection error: {err[:50]}", attempt)
-                    if attempt < MAX_RETRIES:
-                        wait_time = RETRY_BACKOFF ** attempt
-                        log.info(f"Connection error — retrying in {wait_time:.1f}s...")
-                        time.sleep(wait_time)
-                        continue
-
-                else:
-                    if error_tracker:
-                        error_tracker.log_supabase_failure(
-                            [s.app_name for s in pending],
-                            f"Error: {err[:80]}", attempt)
-                    else:
-                        log.error(f"Supabase insert failed (attempt {attempt}): {err}")
-                    if attempt < MAX_RETRIES:
-                        wait_time = RETRY_BACKOFF ** attempt
-                        log.info(f"Retrying in {wait_time:.1f}s...")
-                        time.sleep(wait_time)
-                        continue
-
-        if error_tracker:
-            error_tracker.alert('critical',
-                                f'Failed to sync {len(pending)} app sessions after {MAX_RETRIES} attempts')
-        return 0
-
-    def save_sites(self, site_seconds: Dict[str, dict],
-                   user_login: str, user_email: str, session_id: str) -> int:
-        """Upsert per-website browser usage into the browser_usage table."""
-        if not self.available or not site_seconds:
-            return 0
-
-        records = []
-        for site, rec in site_seconds.items():
-            secs = float(rec.get("seconds", 0.0))
-            if secs <= 0:
+    def save(self,sessions,user_login,user_email,session_id,error_tracker=None):
+        # Every closed and live segment must be provided together. Aggregate
+        # cumulative foreground seconds under the existing session/app key.
+        grouped={}
+        now=datetime.now()
+        for segment in sessions:
+            key=segment.app_name_raw
+            rec=grouped.setdefault(key,dict(app_name=segment.app_name,app_name_raw=key,
+                window_title=segment.window_title,start_time=segment.start_time,
+                end_time=segment.end_time or now,seconds=0.0))
+            rec['seconds']+=max(0.0,segment.active_seconds)
+            rec['start_time']=min(rec['start_time'],segment.start_time)
+            rec['end_time']=max(rec['end_time'],segment.end_time or now)
+            rec['window_title']=segment.window_title
+        saved=0
+        for rec in grouped.values():
+            if rec['seconds']<=0:
                 continue
-            first = rec.get("first")
-            last = rec.get("last")
-            records.append({
-                "session_id":       session_id,
-                "user_login":       user_login,
-                "user_email":       user_email,
-                "site":             site,
-                "duration_seconds": round(secs, 2),
-                "duration_minutes": round(secs / 60, 4),
-                "first_seen":       first.isoformat() if first else None,
-                "last_seen":        last.isoformat() if last else None,
-            })
-        if not records:
-            return 0
-        if not self._has_user_login:
-            for r in records:
-                r.pop("user_login", None)
+            seconds=round(rec['seconds'],2)
+            row=dict(user_login=user_login,user_email=user_email,session_id=session_id,
+                app_name=rec['app_name'],app_name_raw=rec['app_name_raw'],window_title=rec['window_title'],
+                start_time=self._utc(rec['start_time']),end_time=self._utc(rec['end_time']),
+                duration_seconds=seconds,duration_minutes=round(seconds/60,4))
+            saved+=int(self._put('app',row))
+        return saved
 
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                resp = self._client.table("browser_usage").upsert(
-                    supabase_session.stamp_org(records), on_conflict="session_id,site").execute()
-                if getattr(resp, "data", None):
-                    return len(records)
-            except Exception as exc:
-                err = str(exc)
-                if "PGRST204" in err and "user_login" in err and self._has_user_login:
-                    self._has_user_login = False
-                    for r in records:
-                        r.pop("user_login", None)
-                    continue
-                log.warning(f"browser_usage save failed (attempt {attempt}): {err[:80]}")
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_BACKOFF ** attempt)
-        return 0
-
-    def save_live_snapshot(self,
-                           active_sessions: List[AppSession],
-                           user_login: str, user_email: str, session_id: str,
-                           error_tracker: Optional['ErrorTracker'] = None,
-                           table_name: str = "app_usage") -> int:
-        if not self.available:
-            return 0
-
-        if not active_sessions:
-            return 0
-
-        now = datetime.now()
-        records = []
-
-        for s in active_sessions:
-            try:
-                if not s.app_name or not s.start_time:
-                    continue
-
-                active_secs = float(getattr(s, "active_seconds", 0.0) or 0.0)
-
-                if active_secs <= 0:
-                    continue
-
-                records.append({
-                    "user_login":       user_login,
-                    "user_email":       user_email,
-                    "session_id":       session_id,
-                    "app_name":         s.app_name,
-                    "app_name_raw":     s.app_name_raw,
-                    "window_title":     s.window_title,
-                    "start_time":       s.start_time.isoformat(),
-                    "end_time":         now.isoformat(),
-                    "duration_seconds": round(active_secs, 2),
-                    "duration_minutes": round(active_secs / 60.0, 4),
-                })
-            except Exception:
+    def save_sites(self,site_seconds,user_login,user_email,session_id):
+        saved=0
+        for site,rec in site_seconds.items():
+            seconds=round(max(0.0,float(rec.get('seconds',0))),2)
+            if seconds<=0:
                 continue
+            row=dict(user_login=user_login,user_email=user_email,session_id=session_id,site=site,
+                duration_seconds=seconds,duration_minutes=round(seconds/60,4),
+                first_seen=self._utc(rec['first']),last_seen=self._utc(rec['last']))
+            saved+=int(self._put('browser',row))
+        return saved
 
-        if not records:
-            return 0
-
-        if not self._has_user_login:
-            for r in records:
-                r.pop("user_login", None)
-
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                resp = (
-                    self._client
-                    .table(table_name)
-                    .upsert(records, on_conflict="session_id,app_name_raw")
-                    .execute()
-                )
-
-                if getattr(resp, "data", None):
-                    if error_tracker:
-                        error_tracker.log_supabase_success(len(records))
-                    else:
-                        log.info(f"Supabase: live snapshot upserted {len(records)} row(s)")
-                    return len(records)
-
-                if attempt < MAX_RETRIES:
-                    wait_time = RETRY_BACKOFF ** attempt
-                    time.sleep(wait_time)
-                    continue
-
-                return 0
-
-            except Exception as exc:
-                err = str(exc)
-
-                if "PGRST204" in err and "user_login" in err and self._has_user_login:
-                    self._has_user_login = False
-                    for r in records:
-                        r.pop("user_login", None)
-                    continue
-
-                if attempt < MAX_RETRIES:
-                    wait_time = RETRY_BACKOFF ** attempt
-                    time.sleep(wait_time)
-                    continue
-
-                if error_tracker:
-                    error_tracker.log_supabase_failure(
-                        [r.get("app_name", "") for r in records],
-                        f"Live snapshot error: {err[:80]}", attempt)
-                else:
-                    log.debug(f"Live snapshot upsert failed: {err}")
-
-                return 0
+    def save_live_snapshot(self,active_sessions,user_login,user_email,session_id,
+                           error_tracker=None,table_name='app_usage'):
+        return self.save(active_sessions,user_login,user_email,session_id,error_tracker)
 
 
 class AppMonitor:
     def __init__(self, user_email: Optional[str] = None, pause_ctrl: Optional[object] = None,
                  upload_interval_seconds: float = AUTO_SAVE_SECS,
-                 session_id: Optional[str] = None):
+                 session_id: Optional[str] = None, tracking_context=None):
         self.user_login: str = getpass.getuser()
         # No `<login>@<hostname>` invention. app_usage is read on the website
         # with .eq("user_email", userEmail) against the signed-in person's
@@ -653,7 +500,8 @@ class AppMonitor:
         self._site_seconds: Dict[str, dict] = {}
         self._site_url_cache: Dict[str, Optional[str]] = {}
 
-        self._cloud = CloudDB()
+        self._tracking_context = tracking_context or supabase_session.tracking_context()
+        self._cloud = CloudDB(self._tracking_context, pause_ctrl)
         self._error_tracker = ErrorTracker()
 
         log.info(
@@ -667,6 +515,10 @@ class AppMonitor:
             return
 
         time.sleep(1)
+        if not self._cloud.available or not self._cloud.allowed():
+            log.error("Activity tracking cannot start without durable storage and its original login")
+            return
+        self._cloud.start()
         self._running = True
         self._last_poll_time = time.time()
 
@@ -684,6 +536,7 @@ class AppMonitor:
             return
 
         self._running = False
+        self._cloud.stop()
         log.info("Stopping tracker")
 
         if self._thread and self._thread.is_alive():
@@ -693,6 +546,8 @@ class AppMonitor:
             self._finalize_all()
 
         self._flush()
+        # Bounded best effort for one saved row; the rest remain durable.
+        self._cloud.replay(final=True)
 
         error_summary = self._error_tracker.get_summary()
         if error_summary['total_errors'] > 0 or error_summary['supabase_failures'] > 0:
@@ -702,6 +557,9 @@ class AppMonitor:
             )
 
         log.info("Stopped | session=%s", self.session_id)
+
+    def get_sync_status(self):
+        return self._cloud.get_sync_status()
 
     def live_apps(self) -> List[Dict]:
         with self._lock:
@@ -800,15 +658,20 @@ class AppMonitor:
                     if not wait():
                         return
 
+                if self._cloud.local_failed or supabase_session.tracking_context() != self._tracking_context:
+                    return
                 fg_app   = get_foreground_app()
                 fg_title = get_foreground_title() if fg_app else ""
                 fg_site  = self._detect_site(fg_app, fg_title)
                 
+                if (not self._running or supabase_session.tracking_context() != self._tracking_context
+                        or (ctrl and (ctrl.is_paused or ctrl.is_stopped))):
+                    continue
                 current_time = time.time()
                 # Clamp the delta so a pause, system sleep/hibernate, or a long
                 # stall can never credit a huge block of "active" time to an app
                 # or website. Normal polls are POLL_INTERVAL apart.
-                time_delta = min(current_time - self._last_poll_time, POLL_INTERVAL * 2)
+                time_delta = max(0.0, min(current_time - self._last_poll_time, POLL_INTERVAL * 2))
                 self._last_poll_time = current_time
 
                 with self._lock:
@@ -856,6 +719,9 @@ class AppMonitor:
 
                     self._detect_closed_processes()
 
+                # Persist observed aggregates each poll, independently of network.
+                self._flush()
+
                 if time.monotonic() - last_save >= AUTO_SAVE_SECS:
                     if not (ctrl is not None and getattr(ctrl, "is_paused", False)):
                         self._flush()
@@ -886,24 +752,7 @@ class AppMonitor:
                 remaining -= step
 
     def _flush_live_snapshot(self) -> None:
-        if not self._cloud.available:
-            return
-
-        with self._lock:
-            active_sessions = list(self._active.values())
-            user_login      = self.user_login
-            user_email      = self.user_email
-            session_id      = self.session_id
-            error_tracker   = self._error_tracker
-
-        self._cloud.save_live_snapshot(
-            active_sessions,
-            user_login=user_login,
-            user_email=user_email,
-            session_id=session_id,
-            error_tracker=error_tracker,
-            table_name="app_usage",
-        )
+        self._flush()
 
     def _open_session(self, app_name: str, window_title: str) -> None:
         try:
@@ -991,17 +840,13 @@ class AppMonitor:
             rec["last"] = now
 
     def _flush(self) -> None:
-        self._cloud.save(
-            self._done, self.user_login,
-            self.user_email, self.session_id,
-            error_tracker=self._error_tracker,
-        )
-        # Per-website browser usage
+        # Snapshot generation and durable writes are serialized against stop.
+        # CloudDB save only writes SQLite; network lives in ActivityReplay.
         with self._lock:
-            sites_snapshot = {k: dict(v) for k, v in self._site_seconds.items()}
-        self._cloud.save_sites(
-            sites_snapshot, self.user_login, self.user_email, self.session_id,
-        )
+            self._cloud.save(list(self._done)+list(self._active.values()),
+                self.user_login,self.user_email,self.session_id,self._error_tracker)
+            self._cloud.save_sites({k:dict(v) for k,v in self._site_seconds.items()},
+                self.user_login,self.user_email,self.session_id)
 
     def _print_report(self) -> None:
         sessions = self._done
@@ -1034,7 +879,7 @@ class AppMonitor:
         print(f"  {'─' * W}")
 
         if self._cloud.available:
-            print(f"  Supabase   : {n_cloud}/{len(sessions)} rows  →  table: app_usage")
+            print(f"  Activity sync: {self._cloud.get_sync_status()}")
         else:
             print( "  Supabase   : offline  (set SUPABASE_URL / SUPABASE_KEY in .env)")
 
