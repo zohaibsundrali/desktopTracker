@@ -24,6 +24,7 @@ hiddenimports += [
     "screenshot_outbox",
     "screenshot_upload",
     "screenshot_limits",
+    "tracking_work",
     "screenshot_policy",
     "sqlite3",
     "_sqlite3",
