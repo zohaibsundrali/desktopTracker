@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import signal
+import uuid
 import threading
 import time
 from collections import defaultdict
@@ -173,7 +174,7 @@ class _TrackingCore:
 
     def __init__(self, config: TrackerConfig, pause_ctrl=None) -> None:
         self.config       = config
-        self._lock        = threading.Lock()
+        self._lock        = threading.RLock()
         self.window_timer = _WindowTimer(config.idle_threshold_seconds)
 
         # Optional shared PauseController (from pause_controller.PauseController).
@@ -232,7 +233,7 @@ class _TrackingCore:
     # Window snapshot — called at the start of each upload cycle
     # ------------------------------------------------------------------
 
-    def snapshot_and_reset_window(self) -> Tuple[
+    def snapshot_and_reset_window(self, reset=True) -> Tuple[
         List[KeyEvent], Dict[str, dict], float, float
     ]:
         """
@@ -261,11 +262,13 @@ class _TrackingCore:
                 }
 
             # Reset window state
-            self.window_events.clear()
-            self.window_buckets.clear()
+            if reset:
+                self.window_events.clear()
+                self.window_buckets.clear()
 
         # Reset the window timer for the next cycle
-        self.window_timer.reset()
+        if reset:
+            self.window_timer.reset()
 
         return events_snap, buckets_snap, active_secs, idle_secs
 
@@ -274,6 +277,8 @@ class _TrackingCore:
     # ------------------------------------------------------------------
 
     def _on_press(self, key: keyboard.Key) -> None:
+        if not getattr(self,"is_tracking",False):
+            return
         # Stop recording immediately; finalization/network cleanup may still run.
         if self.pause_ctrl is not None and (
             getattr(self.pause_ctrl, "is_paused", False)
@@ -299,6 +304,8 @@ class _TrackingCore:
         )
 
         with self._lock:
+            if not self.is_tracking or (self.pause_ctrl and (self.pause_ctrl.is_paused or self.pause_ctrl.is_stopped)):
+                return
             self.events.append(event)
             self.window_events.append(event)
 
@@ -319,6 +326,8 @@ class _TrackingCore:
             self.last_activity = time.monotonic()
 
     def _on_release(self, key: keyboard.Key) -> None:
+        if not getattr(self,"is_tracking",False):
+            return
         # Stop recording immediately; finalization/network cleanup may still run.
         if self.pause_ctrl is not None and (
             getattr(self.pause_ctrl, "is_paused", False)
@@ -331,6 +340,8 @@ class _TrackingCore:
             key_str = str(key)
 
         with self._lock:
+            if not self.is_tracking or (self.pause_ctrl and (self.pause_ctrl.is_paused or self.pause_ctrl.is_stopped)):
+                return
             if key_str not in self.key_press_times:
                 return
 
@@ -385,17 +396,19 @@ class _TrackingCore:
                 now      = time.monotonic()
                 # Clamp so a pause / system sleep never dumps a huge interval
                 # into active/idle (normal loop cadence is 0.1s).
-                elapsed  = min(now - last_check, 2.0)
+                gap = now - last_check
+                elapsed = gap if 0 <= gap <= 1 else 0.0
                 last_check = now
 
                 idle_for = now - self.last_activity
                 bucket   = _minute_bucket()
 
                 # [FIX-1] Authoritative accumulator
-                self.window_timer.add(elapsed, idle_for)
-
-                # Bucket active/idle for per-minute breakdown display only
+                # Timer and bucket changes share checkpoint locking.
                 with self._lock:
+                    if not self.is_tracking:
+                        return
+                    self.window_timer.add(elapsed, idle_for)
                     for b_dict in (
                         self.time_buckets[bucket],
                         self.window_buckets[bucket],
@@ -700,14 +713,10 @@ class _Analytics:
 # =============================================================================
 
 class _UploadWorker:
-    """
-    Runs in a daemon thread.
-    Every interval_seconds, snapshots the window and upserts one row.
+    """Persist immutable aggregate windows before clearing in-memory events.
 
-    [FIX-2]  Uses time.monotonic() to measure the true elapsed window
-             duration so partial final windows are sized correctly.
-    [FIX-3]  Every Supabase call is wrapped in try/except — network
-             failures are logged and tracking continues uninterrupted.
+    Local commit failure stops keyboard capture and retains the window for
+    final retry. A separate worker replays aggregate snapshots to Supabase.
     """
 
     def __init__(
@@ -720,7 +729,12 @@ class _UploadWorker:
         developer_id:     str,
         developer_email:  str,
         interval_seconds: int = 60,
+        input_sync=None,
     ) -> None:
+        self._input_sync = input_sync
+        self._upload_lock = threading.Lock()
+        self._pending_capture = None
+        self.local_error = None
         self._core            = core
         self._analytics       = analytics
         self._config          = config
@@ -740,6 +754,8 @@ class _UploadWorker:
     # ------------------------------------------------------------------
 
     def start(self) -> None:
+        if self._input_sync:
+            self._input_sync.start()
         self._window_start = time.monotonic()
         self._thread = threading.Thread(
             target=self._upload_loop, daemon=True
@@ -762,6 +778,8 @@ class _UploadWorker:
                 window_seconds=max(elapsed, 1.0),
                 label="final partial window",
             )
+        if self._input_sync:
+            self._input_sync.stop()
 
     # ------------------------------------------------------------------
     # Upload loop
@@ -789,126 +807,57 @@ class _UploadWorker:
                 label=f"cycle #{self._cycle_count + 1}",
             )
             self._cycle_count  += 1
-            self._window_start  = time.monotonic()
+            # Successful checkpoint advances the window baseline.
 
     # ------------------------------------------------------------------
     # Core upload  [FIX-3] network-safe
     # ------------------------------------------------------------------
 
-    def _do_upload(
-        self,
-        window_seconds: float,
-        label: str = "",
-    ) -> None:
-        """
-        1. Snapshot + reset the window (atomic).
-        2. Compute analytics using authoritative active/idle seconds.
-        3. Upsert to Supabase — any exception is caught and logged.
-        """
-        # Snapshot returns authoritative active/idle from _WindowTimer
-        events_snap, buckets_snap, active_secs, idle_secs = (
-            self._core.snapshot_and_reset_window()
-        )
-
-        if not events_snap:
-            print(f"   ⏭  {label}: no events — skipped upload")
-            return
-
-        minute_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        try:
-            # Clamp active_secs to the actual window duration [FIX-1]
-            active_secs = min(active_secs, window_seconds)
-            idle_secs   = max(0.0, window_seconds - active_secs)
-
-            cs = self._analytics.compute_core_stats(
-                events=                  events_snap,
-                buckets=                 buckets_snap,
-                window_seconds=          window_seconds,
-                active_seconds_override= active_secs,
-                idle_seconds_override=   idle_secs,
-            )
-            score   = self._analytics.compute_activity_score(cs)
-            per_min = self._analytics.build_per_minute_dataframe(buckets_snap)
-            heatmap = self._analytics.build_heatmap(events_snap)
-
-            # [FIX-4] assert identity fields are never null
-            payload = {
-                # Identity - map to your schema
-                "session_id":       self._session_id,
-                "user_email":       self._developer_email or "",  # CRITICAL: maps to NOT NULL column
-                "developer_id":     self._developer_id,
-                
-                
-                # Score
-                "activity_score":   score.final_score,
-                
-                # Time metrics
-                "keyboard_activity_percentage": cs.activity_pct,
-                "active_time_minutes":          round(cs.active_seconds / 60, 2),
-                "idle_time_minutes":            round(cs.idle_seconds   / 60, 2),
-                "total_time_minutes":           round(cs.total_seconds  / 60, 2),
-                
-                # Keystroke metrics
-                "total_keys":        cs.total_keys,
-                "unique_keys":       cs.unique_keys,
-                "words_per_minute":  cs.wpm,
-                
-                 
-                
-                # Advanced
-            
-                
-                # JSONB
-                
-                "per_minute_summary": (
-                    per_min.to_dict("records") if not per_min.empty else []
-                ),
-                
-                # Audit
-                "tracked_at": datetime.now().isoformat(),
-            }
-
-            # [FIX-3] isolated network call — never crashes the tracker.
-            # developer_id must be a real uuid: `or ""` used to send an empty
-            # string, which Postgres refuses to cast, so the whole upload
-            # failed at exactly the moment identity was already missing.
-            if self._client and self._developer_id:
-                try:
-                    (
-                        self._client     
-                        .table("keyboard_stats")
-                        .insert(supabase_session.stamp_org(payload))
-                        .execute()
-                    )
-                    print(
-                        f"   💾 Uploaded {label} | "
-                        f"Score: {score.final_score}/100 | "
-                        f"Keys: {cs.total_keys} | "
-                        f"WPM: {cs.wpm} | "
-                        f"Activity: {cs.activity_pct}% | "
-                        f"Active: {round(cs.active_seconds,1)}s / "
-                        f"{round(window_seconds,1)}s"
-                    )
-                except Exception as net_exc:
-                    # [FIX-3] log and continue — tracking is unaffected
-                    print(
-                        f"   ⚠️  Supabase upload failed ({label}): {net_exc} "
-                        f"— tracking continues."
-                    )
-            else:
-                # No client — print local-only summary
-                print(
-                    f"   📊 [{label}] (no Supabase) | "
-                    f"Score: {score.final_score}/100 | "
-                    f"Keys: {cs.total_keys} | "
-                    f"WPM: {cs.wpm} | "
-                    f"Activity: {cs.activity_pct}%"
-                )
-
-        except Exception as exc:
-            # Catch analytics errors — still never crash the tracker
-            print(f"   ⚠️  Analytics error ({label}): {exc} — tracking continues.")
+    def _do_upload(self, window_seconds: float, label: str = "") -> bool:
+        # Snapshot, analytics and SQLite commit share the input lock. The
+        # window is cleared only after durable commit; network runs elsewhere.
+        with self._upload_lock, self._core._lock:
+            try:
+                if self._pending_capture is None:
+                    events,buckets,active,idle=self._core.snapshot_and_reset_window(reset=False)
+                    if not events:
+                        self._core.window_events.clear()
+                        self._core.window_buckets.clear()
+                        self._core.window_timer.reset()
+                        self._window_start=time.monotonic()
+                        return True
+                    observed=max(0.001,active+idle)
+                    cs=self._analytics.compute_core_stats(events=events,buckets=buckets,
+                        window_seconds=observed,active_seconds_override=active,idle_seconds_override=idle)
+                    score=self._analytics.compute_activity_score(cs)
+                    per_min=self._analytics.build_per_minute_dataframe(buckets)
+                    from datetime import timezone
+                    payload=dict(session_id=self._session_id,user_email=self._developer_email or '',
+                        developer_id=self._developer_id,activity_score=score.final_score,
+                        keyboard_activity_percentage=cs.activity_pct,
+                        active_time_minutes=round(cs.active_seconds/60,2),
+                        idle_time_minutes=round(cs.idle_seconds/60,2),
+                        total_time_minutes=round(cs.total_seconds/60,2),
+                        total_keys=cs.total_keys,unique_keys=cs.unique_keys,words_per_minute=cs.wpm,
+                        per_minute_summary=per_min.to_dict('records') if not per_min.empty else [],
+                        tracked_at=datetime.now(timezone.utc).isoformat())
+                    self._pending_capture=(str(uuid.uuid4()),payload)
+                capture_id,payload=self._pending_capture
+                if self._input_sync is None:
+                    raise RuntimeError('Input storage unavailable')
+                self._input_sync.capture('keyboard',payload,capture_id)
+                self._core.window_events.clear()
+                self._core.window_buckets.clear()
+                self._core.window_timer.reset()
+                self._window_start=time.monotonic()
+                self._pending_capture=None
+                self.local_error=None
+                return True
+            except Exception:
+                self.local_error='Keyboard capture stopped: local activity could not be saved'
+                self._core.stop()
+                self._stop_event.set()
+                return False
 
 
 # =============================================================================
@@ -943,6 +892,7 @@ class KeyboardTracker:
         session_duration_seconds: int = 60,
         pause_ctrl                    = None,
         session_id:       Optional[str] = None,
+        tracking_context=None,
     ) -> None:
         # developer_id stays None when unknown rather than becoming "".
         # It goes into a uuid column, and "" is not a uuid — coercing it to a
@@ -964,6 +914,17 @@ class KeyboardTracker:
         # A private `keyboard_session_<ms>` matched nothing on the dashboard.
         self._session_id      = session_id or f"keyboard_session_{int(time.time() * 1000)}"
 
+        from input_upload import InputSync
+        from config import config as app_config, user_data_dir
+        self._tracking_context=tracking_context or supabase_session.tracking_context()
+        self._input_sync=None
+        self._input_error=None
+        try:
+            self._input_sync=InputSync(user_data_dir(),app_config.SUPABASE_URL,app_config.SUPABASE_KEY,
+                self._tracking_context,kind="keyboard",allowed=lambda:supabase_session.tracking_context()==self._tracking_context
+                and not (pause_ctrl and (pause_ctrl.is_paused or pause_ctrl.is_stopped)))
+        except Exception:
+            self._input_error='Keyboard capture unavailable: local activity storage needs attention'
         self._uploader:       Optional[_UploadWorker] = None
         self.session_summary: dict = _empty_session_summary()
 
@@ -991,6 +952,8 @@ class KeyboardTracker:
         self.session_summary["start_time"] = datetime.now().isoformat()
         self.session_summary["session_id"] = self._session_id
 
+        if self._input_sync is None:
+            return
         self._tracking.start()
 
         self._uploader = _UploadWorker(
@@ -1002,6 +965,7 @@ class KeyboardTracker:
             developer_id=    self._developer_id,
             developer_email= self._developer_email,
             interval_seconds=self.config.session_duration_seconds,
+            input_sync=self._input_sync,
         )
         self._uploader.start()
 
@@ -1055,6 +1019,12 @@ class KeyboardTracker:
     # ------------------------------------------------------------------
     # Public statistics (full session)
     # ------------------------------------------------------------------
+
+    def get_sync_status(self):
+        status=self._input_sync.snapshot() if self._input_sync else dict(pending=0,error=self._input_error,last_success_at=None)
+        if self._uploader and self._uploader.local_error:
+            status['error']=self._uploader.local_error
+        return status
 
     def get_idle_seconds(self):
         core = self._tracking

@@ -1,15 +1,8 @@
-# mouse_tracker.py - SUPABASE EDITION (Schema-Matched)
-# ============================================================================
-# KEY CHANGES IN THIS VERSION:
-#   - Payload mapped EXACTLY to the provided table schema (no extra columns)
-#   - Removed interactive menu — tracker starts immediately on run
-#   - Robust upload with retry logic and detailed error output
-#   - Periodic upload every 60s + final upload on stop
-#   - Zero local file writes
-# ============================================================================
+# Mouse activity aggregate snapshots are queued locally before authenticated replay.
 
 import pyautogui
 import time
+import uuid
 import json
 import os
 from datetime import datetime
@@ -82,19 +75,18 @@ class MouseEvent:
 # MOUSE TRACKER
 # ============================================================================
 
-class MouseTracker:
-    """
-    Mouse Tracking System — Supabase Edition.
-    Uploads session summaries directly to Supabase. No local files.
+def _serialize_input(method):
+    def locked(self,*args,**kwargs):
+        with self._input_lock:
+            return method(self,*args,**kwargs)
+    return locked
 
-    Table: public.mouse_activities
-    Columns used:
-        id, session_id, developer_id, developer_name, event_type,
-        position_x, position_y, button, scroll_delta, timestamp,
-        activity_status, active_percentage, idle_percentage,
-        productivity_score, duration_seconds, total_events,
-        most_active_quadrant, peak_activity_minute, avg_velocity,
-        created_at
+
+class MouseTracker:
+    """Capture mouse activity and durably queue the existing percentage snapshots.
+
+    Local SQLite stores only session/developer identifiers, timestamp, status,
+    and active/idle percentages. Network acknowledgement removes queued content.
     """
 
     # ── Constructor ──────────────────────────────────────────────────────────
@@ -109,6 +101,7 @@ class MouseTracker:
         upload_interval:   int   = 60,
         pause_ctrl:        Optional[object] = None,
         session_id:        Optional[str] = None,
+        tracking_context=None,
     ):
         # Config
         self.idle_threshold    = idle_threshold
@@ -213,14 +206,26 @@ class MouseTracker:
 
         # Supabase client
         self.supabase: Optional[Any] = None
-        self._init_supabase()
+        from input_upload import InputSync
+        from config import config as app_config, user_data_dir
+        self._tracking_context=tracking_context or supabase_session.tracking_context()
+        self._input_sync=None
+        self._input_error=None
+        self._pending_input=None
+        self._input_lock=threading.RLock()
+        try:
+            self._input_sync=InputSync(user_data_dir(),app_config.SUPABASE_URL,app_config.SUPABASE_KEY,
+                self._tracking_context,kind="mouse",allowed=lambda:supabase_session.tracking_context()==self._tracking_context
+                and not (self.pause_ctrl and (self.pause_ctrl.is_paused or self.pause_ctrl.is_stopped)))
+        except Exception:
+            self._input_error='Mouse capture unavailable: local activity storage needs attention'
 
         print("🖱️  Mouse Tracker Initialized")
         print(f"   Screen         : {self.screen_width}x{self.screen_height}")
         print(f"   Idle threshold : {self.idle_threshold}s")
         print(f"   Developer      : {self.developer_name} ({self.developer_id})")
         print(f"   Upload interval: every {self.upload_interval}s + on stop")
-        print(f"   Supabase       : {'✅ Connected' if self.supabase else '❌ Not connected'}")
+        print(f"   Local queue    : {'available' if self._input_sync else 'unavailable'}")
 
     # ── Pause helper ───────────────────────────────────────────────────────
 
@@ -239,141 +244,41 @@ class MouseTracker:
             return True
         return bool(wait())
 
-    # ── Supabase init ────────────────────────────────────────────────────────
-
-    def _init_supabase(self):
-        if not SUPABASE_AVAILABLE:
-            print("❌ supabase-py missing. Install: pip install supabase")
-            return
-
-        url = os.getenv("SUPABASE_URL", "").strip()
-        key = os.getenv("SUPABASE_KEY", "").strip()
-
-        if not url or not key:
-            print("⚠️  SUPABASE_URL / SUPABASE_KEY not set in environment.")
-            return
-
-        try:
-            self.supabase = create_client(url, key)
-            # Keep this client authorized as the signed-in user (RLS/anon key).
-            try:
-                import supabase_session
-                supabase_session.register(self.supabase)
-            except Exception:
-                pass
-            print(f"✅ Supabase connected → {url[:50]}…")
-        except Exception as exc:
-            print(f"❌ Supabase init failed: {exc}")
-            self.supabase = None
-
-    # ── Core upload ──────────────────────────────────────────────────────────
-
     def upload_to_supabase(self, is_periodic: bool = False) -> bool:
-        """
-        Insert one summary row into public.mouse_activities.
-
-        EXACT column mapping to your schema:
-        ┌──────────────────────────────┬──────────────────────────┐
-        │ Python field                 │ Supabase column          │
-        ├──────────────────────────────┼──────────────────────────┤
-        │ self.session_id              │ session_id  (text)       │
-        │ self.developer_id            │ developer_id (uuid)      │
-        │ self.developer_name          │ developer_name (text)    │
-        │ "session_summary"            │ event_type  (text)       │
-        │ None                         │ position_x  (integer)    │
-        │ None                         │ position_y  (integer)    │
-        │ None                         │ button      (text)       │
-        │ None                         │ scroll_delta (integer)   │
-        │ session_summary["timestamp"] │ timestamp (timestamptz)  │
-        │ _productivity_tier(score)    │ activity_status (text)   │
-        │ active_percentage            │ active_percentage (float)│
-        │ idle_percentage              │ idle_percentage  (float) │
-        │ productivity_score           │ productivity_score(float)│
-        │ duration_seconds             │ duration_seconds (float) │
-        │ total_events                 │ total_events (integer)   │
-        │ most_active_quadrant         │ most_active_quadrant     │
-        │ peak_activity_minute         │ peak_activity_minute     │
-        │ average_velocity             │ avg_velocity (float)     │
-        │ — omitted —                  │ created_at (db default)  │
-        │ — omitted —                  │ id  (db default uuid)    │
-        └──────────────────────────────┴──────────────────────────┘
-        """
-        if not self.supabase:
-            print("⚠️  Supabase not connected — skipping upload.")
-            return False
-
-        # Without a developer there is nothing to attribute the row to, and
-        # str(None) would be sent as the literal text "None" into a uuid
-        # column. Skip loudly rather than write an unusable row.
-        if not self.developer_id:
-            print("⚠️  No developer id — skipping mouse activity upload.")
-            return False
-
-        label = "PERIODIC" if is_periodic else "FINAL"
-        s     = self.session_summary
-
-        # ── Payload — only columns defined in the schema ──────────────────
-        payload: Dict[str, Any] = {
-            # Identity
-            "session_id":           str(s.get("session_id", self.session_id)),
-            "developer_id":         str(self.developer_id),       # uuid cast to str; PG auto-converts
-            "developer_name":       str(self.developer_name),
-           
-
-            # Timestamp — ISO 8601 accepted by timestamptz
-            "timestamp":            s.get("timestamp") or datetime.utcnow().isoformat(),
-
-            # Activity
-            "activity_status":      self._productivity_tier(float(s.get("productivity_score", 0))),
-            "active_percentage":    float(s.get("active_percentage",  0.0)),
-            "idle_percentage":      float(s.get("idle_percentage",    0.0)),
-            
-
-            # Session metrics
-       
-
-            # id and created_at are auto-generated by the DB — DO NOT include them
-        }
-
-        # ── Insert with one automatic retry ──────────────────────────────
-        last_exc = None
-        for attempt in (1, 2):
+        """Durably queue the existing aggregate snapshot, without network calls."""
+        with self._input_lock:
             try:
-                response = (
-                    self.supabase
-                    .table("mouse_activities")
-                    .insert(supabase_session.stamp_org(payload))
-                    .execute()
-                )
+                if self._pending_input is None:
+                    from datetime import timezone
+                    s=dict(self.session_summary)
+                    payload=dict(session_id=str(s.get('session_id',self.session_id)),
+                        developer_id=str(self.developer_id),developer_name=str(self.developer_name),
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        activity_status=self._productivity_tier(float(s.get('productivity_score',0))),
+                        active_percentage=float(s.get('active_percentage',0)),
+                        idle_percentage=float(s.get('idle_percentage',0)))
+                    self._pending_input=(str(uuid.uuid4()),payload)
+                if self._input_sync is None:
+                    raise RuntimeError('Input storage unavailable')
+                capture_id,payload=self._pending_input
+                self._input_sync.capture('mouse',payload,capture_id)
+                self._pending_input=None
+                self._input_error=None
+                return True
+            except Exception:
+                self._input_error='Mouse capture stopped: local activity could not be saved'
+                self.is_tracking=False
+                return False
 
-                if response.data:
-                    row = response.data[0]
-                    print(
-                        f"✅ [{label}] Uploaded to Supabase | "
-                        f"id={row.get('id', '?')} | "
-                        f"session={payload['session_id']} | "
-                     
-                        f"active={payload['active_percentage']:.1f}%"
-                    )
-                    return True
+    def get_sync_status(self):
+        status=self._input_sync.snapshot() if self._input_sync else dict(pending=0,last_success_at=None)
+        if self._input_error:
+            status['error']=self._input_error
+        return status
 
-                # 2xx but no data (edge case)
-                print(f"⚠️  [{label}] Attempt {attempt}: insert returned no rows.")
-                print(f"   Response: {response}")
-
-            except Exception as exc:
-                last_exc = exc
-                print(f"❌ [{label}] Attempt {attempt} exception: {exc}")
-
-            if attempt == 1:
-                print("   Retrying in 3 seconds…")
-                time.sleep(3)
-
-        print(f"❌ [{label}] All upload attempts failed.")
-        if last_exc:
-            print(f"   Last error: {last_exc}")
-        print("   ⚠️  Session data was NOT persisted. Check connection & schema.")
-        return False
+    def _capture_allowed(self):
+        return (self.is_tracking and supabase_session.tracking_context()==self._tracking_context
+                and not (self.pause_ctrl and (self.pause_ctrl.is_paused or self.pause_ctrl.is_stopped)))
 
     # ── Productivity tier helper ─────────────────────────────────────────────
 
@@ -394,8 +299,8 @@ class MouseTracker:
             if not self._wait_if_paused():
                 break
             time.sleep(self.upload_interval)
-            if not self.is_tracking:
-                break
+            if not self._capture_allowed():
+                continue
             if self.start_time:
                 # Snapshot current end_time for summary generation
                 self.end_time = time.time()
@@ -428,6 +333,9 @@ class MouseTracker:
             print("⚠️  Already tracking.")
             return
 
+        if self._input_sync is None:
+            return
+        self._input_sync.start()
         self.is_tracking         = True
         self.start_time          = time.time()
         self.last_activity_time  = time.time()
@@ -455,7 +363,10 @@ class MouseTracker:
 
     def stop_tracking(self):
         if not self.is_tracking:
-            print("⚠️  Not tracking.")
+            if self._pending_input:
+                self.upload_to_supabase()
+            if self._input_sync:
+                self._input_sync.stop()
             return
 
         self.is_tracking = False
@@ -464,20 +375,12 @@ class MouseTracker:
         if hasattr(self, "_t_movement"):
             self._t_movement.join(timeout=2)
 
-        # Capture final time slice
-        elapsed        = self.end_time - self.last_bucket_check
-        since_last_act = self.end_time - self.last_activity_time
-        bucket         = self._get_minute_bucket()
-
-        if since_last_act < self.idle_threshold:
-            self.session_active_seconds                  += elapsed
-            self.time_buckets[bucket]["active_seconds"]  += elapsed
-        else:
-            self.session_idle_seconds                    += elapsed
-            self.time_buckets[bucket]["idle_seconds"]    += elapsed
-
+        # Continuous sampling already accounts for observed time. Do not
+        # add the whole session (or paused wall time) again at stop.
         self._generate_final_summary()
         self._save_session_summary()
+        if self._input_sync:
+            self._input_sync.stop()
 
         if self.auto_delete_csv and self.save_summary_only:
             self._cleanup_temp_files()
@@ -485,45 +388,50 @@ class MouseTracker:
         s = self.session_summary
         print("\n🛑 Tracking STOPPED")
         print(f"   Active       : {s['active_percentage']:.1f}%")
-        
 
-    # ── Save → upload (no local file) ────────────────────────────────────────
+
+    # ── Durable snapshot checkpoint ────────────────────────────────────────
 
     def _save_session_summary(self):
-        """Replaces JSON file write. Uploads to Supabase only."""
-        print("\n📤 Uploading final session summary to Supabase…")
+        """Queue the final aggregate; network replay is independent."""
+        print("\nSaving final mouse snapshot locally…")
         self.upload_to_supabase(is_periodic=False)
 
     # ── Continuous time tracking ─────────────────────────────────────────────
 
     def _track_time_continuously(self):
-        last_check = time.time()
+        last_check = time.monotonic()
         while self.is_tracking:
             if not self._wait_if_paused():
                 break
             try:
                 now        = time.time()
-                since_last = now - self.last_activity_time
-                bucket     = self._get_minute_bucket()
-                # Clamp so a pause / system sleep never dumps a huge interval
-                # into active/idle (normal loop cadence is 0.1s).
-                elapsed    = min(now - last_check, 2.0)
+                with self._input_lock:
+                    if not self._capture_allowed():
+                        last_check=time.monotonic()
+                        continue
+                    since_last = now - self.last_activity_time
+                    bucket     = self._get_minute_bucket()
+                    # Clamp so a pause / system sleep never dumps a huge interval
+                    # into active/idle (normal loop cadence is 0.1s).
+                    gap = time.monotonic() - last_check
+                    elapsed = gap if 0 <= gap <= 1 else 0.0
 
-                if since_last < 2.0:
-                    self.session_active_seconds                  += elapsed
-                    self.time_buckets[bucket]["active_seconds"]  += elapsed
-                    self.idle_status = ActivityStatus.ACTIVE
-                else:
-                    self.session_idle_seconds                    += elapsed
-                    self.time_buckets[bucket]["idle_seconds"]    += elapsed
-                    if since_last > self.idle_threshold:
-                        self.idle_status = ActivityStatus.IDLE
-                    elif since_last > self.idle_threshold * 0.5:
+                    if since_last < 2.0:
+                        self.session_active_seconds                  += elapsed
+                        self.time_buckets[bucket]["active_seconds"]  += elapsed
                         self.idle_status = ActivityStatus.ACTIVE
                     else:
-                        self.idle_status = ActivityStatus.VERY_ACTIVE
+                        self.session_idle_seconds                    += elapsed
+                        self.time_buckets[bucket]["idle_seconds"]    += elapsed
+                        if since_last > self.idle_threshold:
+                            self.idle_status = ActivityStatus.IDLE
+                        elif since_last > self.idle_threshold * 0.5:
+                            self.idle_status = ActivityStatus.ACTIVE
+                        else:
+                            self.idle_status = ActivityStatus.VERY_ACTIVE
 
-                last_check = now
+                    last_check = time.monotonic()
                 time.sleep(0.1)
             except Exception as exc:
                 print(f"⚠️  Time-tracking error: {exc}")
@@ -540,35 +448,37 @@ class MouseTracker:
                 current = pyautogui.position()
                 self._idle_poll_at = time.monotonic()
 
-                if current != self.last_position:
-                    dx       = current[0] - self.last_position[0]
-                    dy       = current[1] - self.last_position[1]
-                    distance = np.sqrt(dx**2 + dy**2)
-                    dt       = now - self.last_event_time
-                    velocity = 0.0 if dt < 0.01 else distance / dt
+                with self._input_lock:
+                    if not self._capture_allowed():
+                        continue
+                    if current != self.last_position:
+                        dx       = current[0] - self.last_position[0]
+                        dy       = current[1] - self.last_position[1]
+                        distance = np.sqrt(dx**2 + dy**2)
+                        dt       = now - self.last_event_time
+                        velocity = 0.0 if dt < 0.01 else distance / dt
 
-                    self.total_distance  += distance
-                    self.max_velocity     = max(self.max_velocity, velocity)
-                    if velocity > 0:
-                        self.min_velocity = min(self.min_velocity, velocity)
+                        self.total_distance  += distance
+                        self.max_velocity     = max(self.max_velocity, velocity)
+                        if velocity > 0:
+                            self.min_velocity = min(self.min_velocity, velocity)
 
-                    bucket = self._get_minute_bucket()
-                    event  = self._create_move_event(current[0], current[1], velocity, distance, bucket)
+                        bucket = self._get_minute_bucket()
+                        event  = self._create_move_event(current[0], current[1], velocity, distance, bucket)
 
-                    if not self.save_summary_only:
-                        self.events.append(event)
+                        if not self.save_summary_only:
+                            self.events.append(event)
 
-                    self._update_time_bucket(bucket, "move", {
-                        "distance": distance,
-                        "velocity": velocity,
-                        "quadrant": event.quadrant,
-                    })
+                        self._update_time_bucket(bucket, "move", {
+                            "distance": distance,
+                            "velocity": velocity,
+                            "quadrant": event.quadrant,
+                        })
 
-                    self.last_activity_time = now
-                    self._idle_last_activity = time.monotonic()
-                    self.last_position      = current
-                    self.last_event_time    = now
-
+                        self.last_activity_time = now
+                        self._idle_last_activity = time.monotonic()
+                        self.last_position      = current
+                        self.last_event_time    = now
                 time.sleep(0.05)
             except Exception as exc:
                 print(f"⚠️  Movement error: {exc}")
@@ -619,8 +529,9 @@ class MouseTracker:
 
     # ── Click / scroll ───────────────────────────────────────────────────────
 
+    @_serialize_input
     def record_click(self, button: str, x: int, y: int, pressed: bool):
-        if not self.is_tracking:
+        if not self._capture_allowed():
             return
         key = button if button in self.click_counts else "other"
         self.click_counts[key] += 1
@@ -648,8 +559,9 @@ class MouseTracker:
         if pressed:
             print(f"🖱️  Click [{button}] at ({x}, {y})")
 
+    @_serialize_input
     def record_scroll(self, x: int, y: int, dx: int, dy: int):
-        if not self.is_tracking:
+        if not self._capture_allowed():
             return
         if   dy > 0: direction = "up";    self.scroll_counts["up"]    += 1
         elif dy < 0: direction = "down";  self.scroll_counts["down"]  += 1
@@ -735,6 +647,7 @@ class MouseTracker:
 
     # ── Summary generation ───────────────────────────────────────────────────
 
+    @_serialize_input
     def _generate_final_summary(self):
         if not self.start_time:
             return
@@ -746,13 +659,7 @@ class MouseTracker:
         total_idle    = self.session_idle_seconds
         total_tracked = total_active + total_idle
 
-        if total_tracked < duration * 0.95:
-            missing = duration - total_tracked
-            if total_tracked > 0:
-                total_active += missing * (total_active / total_tracked)
-                total_idle   += missing * (total_idle   / total_tracked)
-            else:
-                total_idle = duration
+        duration = total_tracked
 
         active_pct = (total_active / duration * 100) if duration > 0 else 0
         idle_pct   = (total_idle   / duration * 100) if duration > 0 else 0
@@ -895,6 +802,8 @@ class MouseTrackerWithPynput(MouseTracker):
 
     def start(self):
         super().start_tracking()
+        if not self.is_tracking:
+            return
         try:
             from pynput import mouse
             self.listener = mouse.Listener(
@@ -929,7 +838,7 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"   Started : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("   Uploads  : every 60s (periodic) + on Ctrl+C (final)")
-    print("   Storage  : Supabase only — no local files")
+    print("   Storage  : Local aggregate queue with authenticated cloud replay")
     print("=" * 60)
 
     tracker = MouseTrackerWithPynput(
@@ -948,7 +857,7 @@ if __name__ == "__main__":
             now = time.time()
             if now - last_print >= 30:
                 stats = tracker.get_detailed_stats()
-        
+
                 last_print = now
 
     except KeyboardInterrupt:
