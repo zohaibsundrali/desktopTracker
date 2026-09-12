@@ -613,6 +613,15 @@ class DashboardWindow:
         if self.stop_update_thread:
             return
         try:
+            if getattr(self.timer, "authorization_lost", False):
+                self.timer_running = False
+                self.start_btn.configure(state="disabled")
+                self.pause_btn.configure(state="disabled")
+                self.stop_btn.configure(state="disabled")
+                self.status_label.configure(
+                    text="Tracking authorization ended. Sign out and sign in again.",
+                    text_color=Colors.ACCENT_RED,
+                )
             if self.timer_running and self.app.winfo_exists():
                 status = self.timer.get_current_time()
                 elapsed = status.get("elapsed_seconds", 0)
@@ -746,7 +755,10 @@ class DashboardWindow:
         # Shut the tracker down — stops its non-daemon anchor thread so it doesn't
         # leak across re-logins or hang process exit — and drop the stale ref.
         try:
-            self.timer.shutdown()
+            self.timer.stop()
+            # Finalizer can wait for provider IO; release the UI immediately.
+            threading.Thread(target=self.timer.shutdown, daemon=True,
+                             name="DesktopTrackerShutdown").start()
         except Exception:
             pass
         self.login_window.dashboard = None

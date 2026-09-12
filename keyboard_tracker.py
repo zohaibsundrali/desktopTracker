@@ -274,8 +274,11 @@ class _TrackingCore:
     # ------------------------------------------------------------------
 
     def _on_press(self, key: keyboard.Key) -> None:
-        # Ignore key events when a shared PauseController is actively paused
-        if self.pause_ctrl is not None and getattr(self.pause_ctrl, "is_paused", False):
+        # Stop recording immediately; finalization/network cleanup may still run.
+        if self.pause_ctrl is not None and (
+            getattr(self.pause_ctrl, "is_paused", False)
+            or getattr(self.pause_ctrl, "is_stopped", False)
+        ):
             return
         try:
             key_str    = key.char
@@ -316,8 +319,11 @@ class _TrackingCore:
             self.last_activity = time.monotonic()
 
     def _on_release(self, key: keyboard.Key) -> None:
-        # Ignore key events when a shared PauseController is actively paused
-        if self.pause_ctrl is not None and getattr(self.pause_ctrl, "is_paused", False):
+        # Stop recording immediately; finalization/network cleanup may still run.
+        if self.pause_ctrl is not None and (
+            getattr(self.pause_ctrl, "is_paused", False)
+            or getattr(self.pause_ctrl, "is_stopped", False)
+        ):
             return
         try:
             key_str = key.char
