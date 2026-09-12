@@ -26,6 +26,7 @@ hiddenimports += [
     "screenshot_limits",
     "tracking_work",
     "break_tracker",
+    "idle_reminder",
     "screenshot_policy",
     "sqlite3",
     "_sqlite3",

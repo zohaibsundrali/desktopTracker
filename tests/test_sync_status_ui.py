@@ -4,15 +4,15 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
-from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text
+from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text, idle_reminder_text
 
 
 def dashboard_class(clock):
     tree = ast.parse(Path(__file__).resolve().parents[1].joinpath('ui_dashboard.py').read_text())
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DashboardWindow')
     cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in
-                ('_refresh_session_sync_status', '_refresh_screenshot_sync_status', '_refresh_break_status', '_schedule_timer_update')]
-    namespace = {'break_status_text': break_status_text, 'screenshot_policy_text': screenshot_policy_text, 'time': clock, 'session_sync_text': session_sync_text, 'screenshot_sync_text': screenshot_sync_text,
+                ('_refresh_session_sync_status', '_refresh_screenshot_sync_status', '_refresh_break_status', '_refresh_idle_reminder', '_schedule_timer_update')]
+    namespace = {'idle_reminder_text': idle_reminder_text, 'break_status_text': break_status_text, 'screenshot_policy_text': screenshot_policy_text, 'time': clock, 'session_sync_text': session_sync_text, 'screenshot_sync_text': screenshot_sync_text,
                  'Colors': SimpleNamespace(ACCENT_ORANGE='orange', ACCENT_GREEN='green', ACCENT_RED='red'),
                  'C': lambda key: key}
     exec(compile(ast.fix_missing_locations(ast.Module(body=[cls], type_ignores=[])), 'ui_dashboard.py', 'exec'), namespace)
@@ -56,3 +56,18 @@ class SyncStatusUiTests(unittest.TestCase):
         dashboard.break_status_label = Mock()
         dashboard._refresh_break_status()
         self.assertIn('On break: 1 · 00:01:30', dashboard.break_status_label.configure.call_args.kwargs['text'])
+
+    def test_idle_actions_only_enable_for_verified_pending_reminder(self):
+        dashboard = dashboard_class(SimpleNamespace(monotonic=lambda: 10))()
+        status = {'available':True,'enabled':True,'threshold_seconds':60,'idle_seconds':65,'pending':True,'paused':False}
+        dashboard.timer = SimpleNamespace(get_idle_reminder_status=Mock(return_value=status))
+        dashboard.timer_running = True
+        dashboard.timer_paused = False
+        dashboard.idle_status_label = Mock()
+        dashboard.idle_continue_btn = Mock()
+        dashboard.idle_pause_btn = Mock()
+        dashboard._refresh_idle_reminder()
+        dashboard.idle_pause_btn.configure.assert_called_with(state='normal')
+        dashboard.timer.get_idle_reminder_status.return_value = {'available':False}
+        dashboard._refresh_idle_reminder()
+        dashboard.idle_pause_btn.configure.assert_called_with(state='disabled')

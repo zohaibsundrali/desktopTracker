@@ -21,6 +21,7 @@ from tracking_work import get_tracking_work_options, validate_selection, Trackin
 from datetime import datetime
 from dataclasses import dataclass, field
 from break_tracker import BreakTracker
+from idle_reminder import IdleReminder
 from enum import Enum, auto
 from typing import Optional, Dict, List
 
@@ -222,6 +223,7 @@ class TimerTracker:
         self.start_error = None
         self._ctx: Optional[_SessionContext] = None
 
+        self._idle_reminder = None
         self._break_tracker = BreakTracker()
         self.instant_timer  = InstantTimer()
         self.app_display    = AppDisplayPanel()
@@ -318,6 +320,8 @@ class TimerTracker:
                 ctx = _SessionContext(session_id)
                 self._ctx = ctx
 
+                self._idle_reminder = IdleReminder(getattr(config, "SUPABASE_URL", ""),
+                    getattr(config, "SUPABASE_KEY", ""), self._tracking_context)
                 self._break_tracker = BreakTracker()
                 self.instant_timer.start()
                 self._session_state = SessionState.RUNNING
@@ -334,6 +338,7 @@ class TimerTracker:
 
                 self._spawn(lambda: self._tracker_lifecycle(ctx), "TrackerLifecycle")
                 self._spawn(lambda: self._display_loop(ctx),      "DisplayLoop")
+                self._spawn(lambda: self._idle_reminder_loop(ctx, self._idle_reminder), "IdleReminder")
 
                 log.info(f"Session STARTED: {session_id}")
                 return True
@@ -365,6 +370,7 @@ class TimerTracker:
                     self._ctx.pause_ctrl.pause()   # ← blocks ALL worker loops
 
                 self._session_state = SessionState.PAUSED
+                self._idle_reminder.reset(paused=True)
                 if self.session:
                     self.session.status = "paused"
                     self._break_tracker.pause()
@@ -392,6 +398,7 @@ class TimerTracker:
                     if self._checkpoint_session(self.session.session_id) is False:
                         return False
 
+                self._idle_reminder.reset()
                 if not self.instant_timer.resume():
                     return False
 
@@ -429,6 +436,7 @@ class TimerTracker:
                     ctx.pause_ctrl.stop()    # unblock workers → they exit their loops
                     ctx.stop_event.set()     # exit lifecycle + display loops
 
+                self._idle_reminder.reset()
                 self._break_tracker.close()
                 total_elapsed       = int(round(self.instant_timer.stop()))
                 self._session_state = SessionState.IDLE
@@ -512,6 +520,36 @@ class TimerTracker:
             "project_id": self.session.project_id if self.session else None,
             "task_id": self.session.task_id if self.session else None,
         }
+
+    def get_idle_reminder_status(self):
+        reminder = self._idle_reminder
+        return reminder.status() if reminder and self._tracking_authorized() else IdleReminder._empty()
+
+    def dismiss_idle_reminder(self):
+        if self._idle_reminder and self._tracking_authorized():
+            self._idle_reminder.dismiss()
+
+    def _idle_reminder_loop(self, ctx, reminder):
+        last_refresh = None
+        while not ctx.stop_event.is_set():
+            now = time.monotonic()
+            if not self._tracking_authorized():
+                reminder.update(None, None, authorized=False)
+                return
+            if last_refresh is None or now - last_refresh >= 30:
+                reminder.refresh()
+                last_refresh = time.monotonic()
+            try:
+                mouse_idle = self.mouse_tracker.get_idle_seconds() if self.mouse_tracker else None
+                keyboard_idle = self.keyboard_tracker.get_idle_seconds() if self.keyboard_tracker else None
+            except Exception:
+                mouse_idle = keyboard_idle = None
+            with self._api_lock:
+                reminder.update(mouse_idle, keyboard_idle, paused=ctx.pause_ctrl.is_paused,
+                    authorized=self._tracking_authorized() and not ctx.stop_event.is_set()
+                               and self._ctx is ctx)
+            if ctx.stop_event.wait(1):
+                return
 
     def get_break_status(self):
         """In-memory status, retained after stop; no database or network access."""
@@ -688,7 +726,7 @@ class TimerTracker:
             return
 
         try:
-            from mouse_tracker import MouseTracker
+            from mouse_tracker import MouseTrackerWithPynput as MouseTracker
             self.mouse_tracker = MouseTracker(
                 idle_threshold=2.0,
                 upload_interval=60,

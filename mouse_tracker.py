@@ -137,6 +137,7 @@ class MouseTracker:
         self.is_tracking        = False
         self.idle_status        = ActivityStatus.ACTIVE
         self.last_activity_time = time.time()
+        self._idle_last_activity = time.monotonic()
         self.start_time:  Optional[float] = None
         self.end_time:    Optional[float] = None
 
@@ -430,6 +431,8 @@ class MouseTracker:
         self.is_tracking         = True
         self.start_time          = time.time()
         self.last_activity_time  = time.time()
+        self._idle_last_activity = time.monotonic()
+        self._idle_poll_at = None
         self.last_bucket_check   = time.time()
         self.idle_status         = ActivityStatus.ACTIVE
         self.session_active_seconds = 0.0
@@ -535,6 +538,7 @@ class MouseTracker:
             try:
                 now     = time.time()
                 current = pyautogui.position()
+                self._idle_poll_at = time.monotonic()
 
                 if current != self.last_position:
                     dx       = current[0] - self.last_position[0]
@@ -561,6 +565,7 @@ class MouseTracker:
                     })
 
                     self.last_activity_time = now
+                    self._idle_last_activity = time.monotonic()
                     self.last_position      = current
                     self.last_event_time    = now
 
@@ -639,6 +644,7 @@ class MouseTracker:
             self.events.append(event)
         self._update_time_bucket(bucket, "click", {})
         self.last_activity_time = time.time()
+        self._idle_last_activity = time.monotonic()
         if pressed:
             print(f"🖱️  Click [{button}] at ({x}, {y})")
 
@@ -670,6 +676,7 @@ class MouseTracker:
             self.events.append(event)
         self._update_time_bucket(bucket, "scroll", {})
         self.last_activity_time = time.time()
+        self._idle_last_activity = time.monotonic()
         print(f"🖱️  Scroll [{direction}] at ({x}, {y})")
 
     # ── Productivity scoring ─────────────────────────────────────────────────
@@ -843,6 +850,17 @@ class MouseTracker:
             })
             return temp
         return self.session_summary.copy()
+
+    def get_idle_seconds(self):
+        """Unknown unless movement polling and click/scroll listener are healthy."""
+        listener = getattr(self, "listener", None)
+        poll = getattr(self, "_idle_poll_at", None)
+        now = time.monotonic()
+        if (not self.is_tracking or listener is None or not listener.is_alive()
+                or poll is None or now - poll > 2
+                or (self.pause_ctrl and (self.pause_ctrl.is_paused or self.pause_ctrl.is_stopped))):
+            return None
+        return max(0.0, now - self._idle_last_activity)
 
     def get_stats(self) -> Dict:
         return self.get_detailed_stats()
