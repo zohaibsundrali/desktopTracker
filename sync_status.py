@@ -27,3 +27,26 @@ def session_sync_text(status):
         text += '. Older local records need recovery review.'
         tone = 'warning'
     return text, tone
+
+
+def screenshot_sync_text(status):
+    """Screenshot ACKs are distinct from captured images and session summaries."""
+    if status is None:
+        return 'Screenshot sync starts with tracking', 'muted'
+    if not isinstance(status, dict):
+        return 'Screenshot sync status unavailable', 'warning'
+    pending = status.get('pending')
+    if status.get('error'):
+        suffix = f' ({pending} queued)' if isinstance(pending, int) and not isinstance(pending, bool) and pending > 0 else ''
+        return f'Screenshot sync needs attention{suffix}. Check connection and local storage.', 'warning'
+    if isinstance(pending, bool) or not isinstance(pending, int) or pending < 0:
+        return 'Screenshot sync status unavailable', 'warning'
+    if pending:
+        return f'Screenshot sync: {pending} saved locally, awaiting confirmation', 'warning'
+    if status.get('last_success_at'):
+        try:
+            stamp = datetime.fromisoformat(status['last_success_at'].replace('Z', '+00:00'))
+            return f'Last screenshot sync: {stamp.astimezone().strftime("%H:%M:%S")}', 'success'
+        except (TypeError, ValueError, AttributeError):
+            return 'Screenshot sync: no pending captures', 'muted'
+    return 'Screenshot sync: waiting for first saved capture', 'muted'

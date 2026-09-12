@@ -4,15 +4,15 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
-from sync_status import session_sync_text
+from sync_status import session_sync_text, screenshot_sync_text
 
 
 def dashboard_class(clock):
     tree = ast.parse(Path(__file__).resolve().parents[1].joinpath('ui_dashboard.py').read_text())
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DashboardWindow')
     cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in
-                ('_refresh_session_sync_status', '_schedule_timer_update')]
-    namespace = {'time': clock, 'session_sync_text': session_sync_text,
+                ('_refresh_session_sync_status', '_refresh_screenshot_sync_status', '_schedule_timer_update')]
+    namespace = {'time': clock, 'session_sync_text': session_sync_text, 'screenshot_sync_text': screenshot_sync_text,
                  'Colors': SimpleNamespace(ACCENT_ORANGE='orange', ACCENT_GREEN='green', ACCENT_RED='red'),
                  'C': lambda key: key}
     exec(compile(ast.fix_missing_locations(ast.Module(body=[cls], type_ignores=[])), 'ui_dashboard.py', 'exec'), namespace)

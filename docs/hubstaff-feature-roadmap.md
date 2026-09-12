@@ -30,3 +30,7 @@ Each delivered slice needs a tested PR, migration/install instructions where app
 ### First delivered slice
 
 Phase 1 session-summary recovery and dashboard sync status are implemented. Fifty offline tests pass, including the pinned Supabase SDK header isolation test and process-crash recovery. The dashboard distinguishes queued summaries, last successful sync, unavailable status and legacy records needing review. Packaged Windows and live backend verification remain release gates; phases 2–8 and non-session telemetry offline persistence are not complete.
+
+### Screenshot recovery slice
+
+Durable screenshot bytes, stable capture identities, phased Storage/metadata retry, current-account and pause/stop guards, plus separate dashboard screenshot-sync status are implemented in the next coordinated web/desktop release. This requires the screenshot-finalization migration before desktop rollout. Admin-versus-employee disable/blur policy is still pending and has not been silently chosen. Actual Windows/provider verification remains required.
