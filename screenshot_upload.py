@@ -7,7 +7,7 @@ from screenshot_limits import validate_screenshot
 
 
 def upload_capture(project, public_key, context, allowed, capture_id, metadata,
-                   image, digest, uploaded, mark_uploaded):
+                   image, digest, uploaded, mark_uploaded, policy_allowed=None):
     def token():
         # Same identity lock as logout/refresh; no network executes under it.
         with supabase_session._lock:
@@ -16,6 +16,8 @@ def upload_capture(project, public_key, context, allowed, capture_id, metadata,
             return supabase_session.access_token()
 
     def headers():
+        if policy_allowed is not None and not policy_allowed():
+            return None
         access = token()
         if not access:
             return None

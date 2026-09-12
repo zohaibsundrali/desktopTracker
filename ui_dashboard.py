@@ -17,7 +17,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from timer_tracker import TimerTracker
-from sync_status import session_sync_text, screenshot_sync_text
+from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text
 from theme import (
     C, font, apply_appearance, Colors,
     Card, Pill, BigTimer, ActivityRing,
@@ -282,6 +282,11 @@ class DashboardWindow:
         )
         self.screenshot_sync_label.pack(anchor="w", pady=(0, 10))
         self._last_screenshot_status_refresh = 0.0
+        self.screenshot_policy_label = ctk.CTkLabel(
+            body, text="Screenshot policy is checked when tracking starts. Pause stops all tracking.",
+            font=font(12), text_color=C("muted"), wraplength=420,
+        )
+        self.screenshot_policy_label.pack(anchor="w", pady=(0, 10))
 
         # Controls row — full body width.
         controls = ctk.CTkFrame(body, fg_color="transparent")
@@ -684,10 +689,14 @@ class DashboardWindow:
             if now - getattr(self, "_last_screenshot_status_refresh", 0.0) < 1:
                 return
             self._last_screenshot_status_refresh = now
-            text, tone = screenshot_sync_text(self.timer.get_screenshot_sync_status())
+            status = self.timer.get_screenshot_sync_status()
+            text, tone = screenshot_sync_text(status)
             color = {"warning": Colors.ACCENT_ORANGE,
                      "success": Colors.ACCENT_GREEN}.get(tone, C("muted"))
             self.screenshot_sync_label.configure(text=text, text_color=color)
+            policy_text, policy_tone = screenshot_policy_text(status)
+            self.screenshot_policy_label.configure(text=policy_text,
+                text_color=Colors.ACCENT_ORANGE if policy_tone == "warning" else C("muted"))
         except Exception:
             try:
                 self.screenshot_sync_label.configure(

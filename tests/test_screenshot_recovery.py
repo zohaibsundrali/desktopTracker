@@ -134,19 +134,30 @@ class ScreenshotUploadTests(unittest.TestCase):
         self.requests = []
         self.mark = MagicMock()
 
-    def run_upload(self, handler, uploaded=False):
+    def run_upload(self, handler, uploaded=False, policy_allowed=None):
         def transport(request):
             self.requests.append(request)
             return handler(request)
         client = httpx.Client(transport=httpx.MockTransport(transport))
         with patch.object(screenshot_upload.httpx, 'Client', return_value=client):
             return screenshot_upload.upload_capture('https://offline.test', 'public-key', CONTEXT,
-                lambda: self.allowed, self.capture, self.meta, IMAGE, hashlib.sha256(IMAGE).hexdigest(), uploaded, self.mark)
+                lambda: self.allowed, self.capture, self.meta, IMAGE, hashlib.sha256(IMAGE).hexdigest(), uploaded, self.mark, policy_allowed=policy_allowed)
 
     def success(self, request):
         if '/rpc/' in str(request.url):
             return httpx.Response(200, json=dict(success=True, capture_id=self.capture, storage_path=self.meta['storage_path']))
         return httpx.Response(200, json={})
+
+    def test_policy_changes_between_requests_holds_saved_capture(self):
+        policy = MagicMock(side_effect=[True, False])
+        self.assertFalse(self.run_upload(self.success, policy_allowed=policy))
+        self.assertEqual(len(self.requests), 1)
+        self.mark.assert_called_once()
+
+    def test_disabled_policy_blocks_all_network(self):
+        self.assertFalse(self.run_upload(self.success, policy_allowed=lambda:False))
+        self.assertEqual(self.requests, [])
+        self.mark.assert_not_called()
 
     def test_storage_then_rpc_use_private_fixed_path_and_captured_auth(self):
         self.assertTrue(self.run_upload(self.success))
@@ -239,9 +250,33 @@ class ScreenshotCaptureTests(unittest.TestCase):
         spec.loader.exec_module(self.module)
         self.module.SUPABASE_URL = 'https://offline.test'
         self.capture = self.module.ScreenshotCapture(developer_id='dev-a', developer_email='a@example.test', pause_ctrl=self.ctrl)
+        self.capture._policy = MagicMock()
+        self.capture._policy.refresh.return_value = True
+        self.capture._policy.snapshot.return_value = {'available': True, 'enabled': True, 'interval_seconds': 60}
         self.capture._current_app = lambda: 'Editor'
         self.capture._running = True
         self.capture._replay_pending = MagicMock()
+
+    def test_disabled_loop_rechecks_after_thirty_seconds_without_capture(self):
+        self.capture._policy.refresh.return_value = False
+        self.capture._stop_event = MagicMock()
+        self.capture._stop_event.wait.return_value = True
+        self.capture._loop()
+        self.capture._stop_event.wait.assert_called_once_with(30)
+        self.pyautogui.screenshot.assert_not_called()
+
+    def test_disabled_policy_never_captures_and_preserves_pending(self):
+        capture = str(uuid.uuid4())
+        self.capture._outbox.put(capture, metadata(capture), IMAGE)
+        self.capture._policy.refresh.return_value = False
+        self.assertIsNone(self.capture.capture())
+        self.pyautogui.screenshot.assert_not_called()
+        self.assertEqual(self.capture._outbox.usage()[0], 1)
+
+    def test_policy_disabled_during_capture_discards_uncommitted_image(self):
+        self.capture._policy.refresh.side_effect = [True, False]
+        self.assertIsNone(self.capture.capture())
+        self.assertEqual(self.capture._outbox.usage()[0], 0)
 
     def test_capture_durably_saves_bytes_before_replay(self):
         self.capture._replay_pending.side_effect = lambda: self.assertEqual(self.capture._outbox.usage()[0], 1)

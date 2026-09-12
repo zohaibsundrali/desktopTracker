@@ -24,6 +24,7 @@ hiddenimports += [
     "screenshot_outbox",
     "screenshot_upload",
     "screenshot_limits",
+    "screenshot_policy",
     "sqlite3",
     "_sqlite3",
     "pynput.keyboard._win32",

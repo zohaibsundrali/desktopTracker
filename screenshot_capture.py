@@ -6,12 +6,12 @@ import io
 import json
 import os
 import queue
-import random
 import threading
 import time
 import logging
 from screenshot_outbox import ScreenshotOutbox
 from screenshot_upload import upload_capture
+from screenshot_policy import ScreenshotPolicy
 from screenshot_limits import MAX_SCREENSHOT_BYTES, MAX_SCREENSHOT_DIMENSION
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -129,6 +129,7 @@ class ScreenshotCapture:
         pause_ctrl:          Optional[object] = None,
     ):
         self._tracking_context = supabase_session.tracking_context()
+        self._policy = ScreenshotPolicy(SUPABASE_URL, SUPABASE_KEY, self._tracking_context)
         self.interval_min = interval_min
         self.interval_max = interval_max
         self.compress     = compress
@@ -190,16 +191,25 @@ class ScreenshotCapture:
         while self._running:
             if not self._wait_if_paused():
                 return
-            delay = random.randint(self.interval_min, self.interval_max)
-            print(f"⏳ Next capture in {delay}s …")
-            for _ in range(delay):
+            if not self._policy_allowed():
+                if self._stop_event.wait(30):
+                    return
+                continue
+            delay = self._policy.snapshot()['interval_seconds']
+            elapsed = 0
+            while elapsed < delay:
                 if not self._running:
                     return
                 if not self._wait_if_paused():
                     return
                 if self._stop_event.wait(1):
                     return
-            if self._running:
+                elapsed += 1
+                if elapsed % 30 == 0:
+                    if not self._policy_allowed():
+                        break
+                    delay = self._policy.snapshot()['interval_seconds']
+            if self._running and elapsed >= delay:
                 self.capture()
 
     def _wait_if_paused(self) -> bool:
@@ -242,12 +252,15 @@ class ScreenshotCapture:
                 and not bool(getattr(self.pause_ctrl, 'is_paused', False))
                 and not bool(getattr(self.pause_ctrl, 'is_stopped', False)))
 
+    def _policy_allowed(self):
+        return self._capture_allowed() and self._policy.refresh() and self._capture_allowed()
+
     def capture(self, annotation: str = "") -> Optional[ScreenshotInfo]:
         """Persist an authorized image before attempting either upload phase."""
         if not self._capture_allowed() or not self._capture_lock.acquire(blocking=False):
             return None
         try:
-            if not self._capture_allowed():
+            if not self._policy_allowed():
                 return None
             if self._sync_status['pending_bytes'] >= self._outbox.max_bytes:
                 raise OSError('Screenshot queue full')
@@ -278,7 +291,7 @@ class ScreenshotCapture:
             info = ScreenshotInfo(timestamp=timestamp.isoformat(), filename=filename,
                                   width=width, height=height, size_kb=round(len(data)/1024, 2),
                                   app_active=self._current_app(), annotation_text=annotation or None)
-            if not self._capture_allowed():
+            if not self._policy_allowed():
                 return None
             org, developer = self._tracking_context[1:3]
             metadata = dict(organization_id=org, developer_id=developer,
@@ -314,12 +327,13 @@ class ScreenshotCapture:
                                           'Screenshots are saved locally; upload will retry' if count else None)
 
     def _replay_pending(self):
-        if not self._outbox or not self._capture_allowed():
+        if not self._outbox or not self._policy_allowed():
             return
         try:
             uploaded = self._outbox.replay(
                 lambda *args: upload_capture(SUPABASE_URL, SUPABASE_KEY, self._tracking_context,
-                                             self._capture_allowed, *args), self._capture_allowed)
+                                             self._capture_allowed, *args,
+                                             policy_allowed=self._policy_allowed), self._capture_allowed)
             if uploaded:
                 self._sync_status['last_success_at'] = datetime.now().astimezone().isoformat()
             self._update_sync_status()
@@ -328,7 +342,8 @@ class ScreenshotCapture:
             logging.getLogger(__name__).exception('Screenshot replay failed; bytes retained')
 
     def get_sync_status(self):
-        return dict(self._sync_status)
+        return dict(self._sync_status, policy=self._policy.snapshot(),
+                    paused=bool(getattr(self.pause_ctrl, 'is_paused', False)), running=self._running)
 
     # ── annotation helper ─────────────────────────────────────────────────────
 
