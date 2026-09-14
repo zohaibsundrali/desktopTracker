@@ -90,7 +90,7 @@ class IdleSensorTests(unittest.TestCase):
     def getter(filename, classname):
         import ast
         from pathlib import Path
-        tree=ast.parse((Path(__file__).resolve().parents[1]/filename).read_text())
+        tree=ast.parse((Path(__file__).resolve().parents[1]/filename).read_text(encoding="utf-8"))
         cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name==classname)
         fn=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='get_idle_seconds')
         code=compile(ast.fix_missing_locations(ast.Module(body=[fn],type_ignores=[])),filename,'exec')

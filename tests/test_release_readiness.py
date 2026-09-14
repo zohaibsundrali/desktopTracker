@@ -44,7 +44,7 @@ class ReleaseReadinessTests(unittest.TestCase):
             source, output = Path(tmp) / '.env', Path(tmp) / 'build/.env'
             source.write_text('\n'.join(f'{k}={v}' for k, v in self.safe.items()) + '\nSERVICE_ROLE_KEY=do-not-bundle\n')
             prepare(source, output)
-            self.assertNotIn('do-not-bundle', output.read_text())
+            self.assertNotIn('do-not-bundle', output.read_text(encoding="utf-8"))
             source.write_text('SUPABASE_KEY=sb_secret_do-not-bundle\n')
             with self.assertRaises(PublicConfigError):
                 prepare(source, output)

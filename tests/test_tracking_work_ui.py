@@ -22,7 +22,7 @@ class WorkUiTests(unittest.TestCase):
     def setUp(self):
         self.jobs, self.callbacks = [], []
         self.identity = ('subject', 'org', 'profile', 'developer', 'session')
-        tree = ast.parse(Path(__file__).resolve().parents[1].joinpath('ui_dashboard.py').read_text())
+        tree = ast.parse(Path(__file__).resolve().parents[1].joinpath('ui_dashboard.py').read_text(encoding="utf-8"))
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DashboardWindow')
         names = {'_set_work_controls', '_clear_work_options', '_on_project_changed',
                  '_load_work_options', 'start_timer', '_reset_buttons_on_error', '_on_session_stopped'}

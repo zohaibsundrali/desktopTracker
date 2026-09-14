@@ -28,7 +28,7 @@ class InputSyncStatusTests(unittest.TestCase):
         view.timer.get_input_sync_status.assert_called_once()
         self.assertIn('awaiting confirmation',view.input_sync_label.configure.call_args.kwargs['text'])
     def test_timer_retains_stopped_sources_without_network(self):
-        tree=ast.parse(Path('timer_tracker.py').read_text())
+        tree=ast.parse(Path('timer_tracker.py').read_text(encoding="utf-8"))
         method=next(n for c in tree.body if isinstance(c,ast.ClassDef) for n in c.body if isinstance(n,ast.FunctionDef) and n.name=='get_input_sync_status')
         ns={};exec(compile(ast.fix_missing_locations(ast.Module(body=[method],type_ignores=[])), 'timer_tracker.py','exec'),ns)
         timer=SimpleNamespace(_last_input_sync_status={'keyboard':None,'mouse':None},keyboard_tracker=SimpleNamespace(get_sync_status=lambda:{'pending':3}),mouse_tracker=None)
