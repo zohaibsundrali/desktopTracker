@@ -16,8 +16,9 @@ The pipeline is two stages:
 ## 🔴 STEP 0 — Security (do this BEFORE building, it is not optional)
 
 The build bundles your `.env` **inside the app**, so it ships to every user who
-downloads it. Right now `.env` holds the **service_role** key = full admin access
-to your database. If you ship that, anyone can extract it and wipe/read your DB.
+downloads it. Include only desktop public configuration. A `service_role`,
+secret API key, database password or other private credential must never be
+included; packaged files can be extracted by users.
 
 Before building, edit `.env` so it uses the **anon / publishable** key instead:
 
@@ -28,9 +29,16 @@ SUPABASE_KEY=<your ANON / publishable key>
 
 Get the anon key: Supabase dashboard → Project Settings → **API** → `anon` `public`.
 
-Then in Supabase enable **Row Level Security (RLS)** on every table and add
-policies so each user only sees their own rows. (Tell me when you're ready and
-I'll write the RLS policies + the migration for you.)
+Apply the reviewed application migrations in their release order. Existing
+tracking policies require an authenticated, enrolled device; do not replace
+them with broad policies to work around a permission error.
+
+For live device presence, first apply the companion web repository migration
+`20260912154948_production_tracker_device_presence.sql`. Then build this desktop
+version, install it, and sign in. Verify start, pause, resume and stop in the
+monitoring dashboard. Heartbeats continue every 30 seconds while paused;
+without a heartbeat, the dashboard marks the device disconnected after 90
+seconds. The old desktop build cannot report this new presence signal.
 
 ---
 
