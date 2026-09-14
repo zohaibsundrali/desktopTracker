@@ -1,121 +1,91 @@
-# Building the Windows installer (`Setup.exe`)
+# Windows desktop build and acceptance
 
-This turns the Python app into a normal Windows program that a user can
-**download → double-click → install** — no Python needed on their machine.
+Full app/window capture is supported on Windows 10/11. A Linux build cannot
+produce a Windows executable. Windows setup tests and real capture acceptance
+are separate from the offline Python regression suite.
 
-The pipeline is two stages:
+## Public configuration
 
-1. **PyInstaller** bundles the app into `dist\DeveloperTracker\DeveloperTracker.exe`
-2. **Inno Setup** wraps that folder into a single `DeveloperTracker-Setup.exe`
-
-> ⚠️ **Must be done on a Windows machine.** A Windows `.exe` cannot be built on
-> Linux/Mac. Use a Windows 10/11 PC (or a Windows VM).
-
----
-
-## 🔴 STEP 0 — Security (do this BEFORE building, it is not optional)
-
-The build bundles your `.env` **inside the app**, so it ships to every user who
-downloads it. Right now `.env` holds the **service_role** key = full admin access
-to your database. If you ship that, anyone can extract it and wipe/read your DB.
-
-Before building, edit `.env` so it uses the **anon / publishable** key instead:
+The pinned Supabase 1.1.1 SDK accepts a **legacy anon JWT key**, not modern
+`sb_publishable_` keys. Use the anon key for the application's Supabase project.
+RLS, signed-in user authorization and enrolled-device policies remain required.
+Never include a service-role key, database password or user access/refresh token.
 
 ```
-SUPABASE_URL=https://isaccqqjobuwfeaxlrwc.supabase.co
-SUPABASE_KEY=<your ANON / publishable key>
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=<legacy anon key>
 ```
 
-Get the anon key: Supabase dashboard → Project Settings → **API** → `anon` `public`.
+`python scripts/prepare_public_config.py` validates these values and writes only
+allowlisted configuration to `build/public-config/.env`. It does not copy a
+whole developer `.env`; unknown fields are excluded and private/session keys
+are rejected. Failed validation removes an earlier generated config so the
+wrong project's previous bundle cannot be reused. Environment variables take
+precedence over the source `.env`; interpolation is disabled.
 
-Then in Supabase enable **Row Level Security (RLS)** on every table and add
-policies so each user only sees their own rows. (Tell me when you're ready and
-I'll write the RLS policies + the migration for you.)
+## Local Windows build
 
----
-
-## STEP 1 — Install the tools (one time)
-
-1. **Python 3.11 or 3.12** — https://www.python.org/downloads/
-   (tick *"Add Python to PATH"* during install)
-2. **Inno Setup** (free) — https://jrsoftware.org/isdl.php
-
----
-
-## STEP 2 — Build the `.exe`
-
-Open **Command Prompt** in the project folder and run:
+Install Python 3.12 and Inno Setup 6, then run:
 
 ```bat
 build_exe.bat
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ```
 
-This installs dependencies + PyInstaller and builds the app. When it finishes you
-get:
+The app is `dist\DeveloperTracker\DeveloperTracker.exe`. The installer is
+`Output\DeveloperTracker-Setup.exe`. Dependency/config/build failures stop the
+batch command rather than claiming that a stale executable is a successful build.
+The installer remains unsigned; code signing and automatic updates are not
+implemented by this release.
 
-```
-dist\DeveloperTracker\DeveloperTracker.exe
-```
+## GitHub Windows build
 
-Double-click that `.exe` to test it runs (login window should appear).
+The Windows desktop build workflow runs the Python regression suite, prepares
+public configuration, freezes the app, runs its packaged offline diagnostics,
+and compiles the installer. It uploads a 14-day artifact named with the commit
+SHA containing the installer, SHA-256 checksum and diagnostics report.
 
-> Optional icon: put a `app.ico` file in the project folder before building and
-> it is picked up automatically (also uncomment `SetupIconFile` in `installer.iss`).
+For main/manual builds, repository variables `DESKTOP_SUPABASE_URL` and
+`DESKTOP_SUPABASE_PUBLIC_KEY` configure the public project and legacy anon key.
+PR builds and builds with missing configuration use a non-working fixture and
+include `BUILD-NOT-CONFIGURED.txt`. Those artifacts prove packaging only and
+must not be distributed to employees. No production credentials, captures,
+emails, enrolled devices or payment requests are used by the workflow.
 
----
+## Offline setup diagnostics
 
-## STEP 3 — Build the installer (`Setup.exe`)
+Run from PowerShell and wait for the windowed process to finish:
 
-1. Open **Inno Setup Compiler**
-2. **File → Open** → `installer.iss`
-3. Press **Build → Compile** (or the ▶ button)
-
-Output:
-
-```
-Output\DeveloperTracker-Setup.exe
-```
-
-That single file is what you upload to your website. The user downloads it,
-double-clicks, clicks **Next → Install**, and the app installs with a Start-menu
-(and optional desktop) shortcut plus an uninstaller in "Add/Remove Programs".
-
----
-
-## STEP 4 — Put it on your website
-
-Upload `DeveloperTracker-Setup.exe` and link a **Download** button to it, e.g.:
-
-```html
-<a href="/downloads/DeveloperTracker-Setup.exe" download>Download for Windows</a>
+```powershell
+Start-Process -Wait -FilePath '.\dist\DeveloperTracker\DeveloperTracker.exe' -ArgumentList '--diagnostics', 'desktop-diagnostics.json'
+Get-Content desktop-diagnostics.json
 ```
 
-### ⚠️ "Windows protected your PC" (SmartScreen)
-Because the installer is **unsigned**, Windows shows a blue SmartScreen warning
-the first time. Users click **More info → Run anyway**. To remove the warning
-permanently you need a **code-signing certificate** (paid, ~$100–400/yr) and sign
-both `DeveloperTracker.exe` and the setup with `signtool`. Optional, but expected
-for a public product.
+The report checks supported platform, public configuration, required imports and
+writable per-user storage. It never starts event listeners, takes screenshots,
+logs in, contacts the backend or includes user names, window titles or keys.
+A passing result means **ready for manual testing**, not confirmed live tracking.
+Runtime queues and remembered email use the per-user data directory, not Program
+Files. Unavailable storage must be corrected; there is no shared-directory fallback.
 
----
+## Installed Windows acceptance
 
-## Notes / limits of this first build
+Use a disposable staff account and verify the matching web/database releases
+before testing. The latest device-presence migration is
+`20260912154948_production_tracker_device_presence.sql`; check the migration
+history before applying it, and do not replay an old bundle.
 
-- **Antivirus false positives:** PyInstaller apps sometimes get flagged. Code
-  signing + submitting to vendors fixes it.
-- **Auto-update:** not included. New version = rebuild + re-upload; users
-  re-run the new setup (Inno upgrades in place via the `AppId`).
-- **User data location:** the app currently writes some runtime files
-  (remember-me, screenshots) next to the program. Under Program Files that path
-  is read-only, so I recommend a small follow-up change to write user data to
-  `%APPDATA%\Developer Tracker` instead. Say the word and I'll do it.
+1. Install, sign in and confirm device enrollment and writable per-user storage.
+2. Select a project/task and start tracking. Compare web and desktop attribution.
+3. Pause, resume and stop. Confirm breaks exclude tracked time, new capture pauses,
+   and connected/paused device status is distinct from historical activity.
+4. Disable screenshots in organization policy and verify new capture stops.
+5. Disconnect the network, record activity, then reconnect. Confirm recovery
+   without duplicate screenshots/input/app aggregates or double-counted time.
+6. Restart after queued work. Confirm own-account recovery and account isolation.
+7. Sign out/revoke the device. Verify capture stops and revoked credentials cannot
+   submit new records. Check monitoring access using a different organization.
+8. Close/disconnect the app and verify web presence expires after 90 seconds.
 
----
-
-## Files in this build kit
-| File | Purpose |
-|------|---------|
-| `tracker.spec` | PyInstaller build recipe (deps, bundled `.env`, windowed) |
-| `build_exe.bat` | One-click: install deps + build the `.exe` |
-| `installer.iss` | Inno Setup script → makes `Setup.exe` |
-| `BUILD_EXE.md` | This guide |
+Record the app commit, Windows version, test date and pass/fail results. A CI
+artifact or a successful homepage deploy cannot substitute for this journey.

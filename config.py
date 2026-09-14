@@ -23,11 +23,9 @@ def user_data_dir() -> str:
     """
     base = os.getenv("APPDATA") or os.path.expanduser("~")
     path = os.path.join(base, "DeveloperTracker" if os.name == "nt" else ".developer-tracker")
-    try:
-        os.makedirs(path, exist_ok=True)
-    except Exception:
-        # Last resort: fall back to the current working directory.
-        path = os.path.abspath(".")
+    # Never silently write private queues into a shared working/program folder.
+    # Callers must surface unavailable per-user storage instead.
+    os.makedirs(path, exist_ok=True)
     return path
 
 

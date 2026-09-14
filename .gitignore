@@ -41,3 +41,8 @@ desktop.ini
 
 # Local fallback queue for failed session uploads
 .pending_sessions.jsonl
+
+# Local installer and diagnostics artifacts
+Output/
+desktop-diagnostics.json
+BUILD-NOT-CONFIGURED.txt
