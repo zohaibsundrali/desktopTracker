@@ -1,9 +1,8 @@
 """
 ui_login.py - Login window for the Developer Tracker desktop app.
 
-A clean single-column sign-in card sized to the original 520x680 window. Visual
-build uses the central design system in theme.py. All authentication / credential
-behaviour is preserved verbatim from the previous implementation.
+Compact responsive login using the website brand tokens and bundled typography.
+Authentication and credential persistence remain in the existing handlers.
 """
 
 import os
@@ -20,11 +19,11 @@ from theme import C, font, apply_appearance
 class LoginWindow:
     def __init__(self):
         self.app = ctk.CTk()
-        self.app.title("Developer Tracker – Premium")
-        self.app.geometry("520x680")
-        self.app.minsize(440, 600)
+        self.app.title("Verisade — Sign in")
+        self.app.geometry("900x640")
+        self.app.minsize(480, 640)
         self.app.resizable(True, True)
-        apply_appearance("light")
+        apply_appearance("dark")
 
         # Hook main-thread toast notifications
         try:
@@ -49,98 +48,152 @@ class LoginWindow:
     def return_to_login(self):
         # Called by the dashboard on sign-out: restore login size + view in the
         # same window (no window is created or destroyed at the OS level).
-        self.app.geometry("520x680")
+        self.app.geometry("900x640")
+        self.app.title("Verisade — Sign in")
+        self.app.minsize(480, 640)
         self._show_login()
 
     def setup_login_ui(self):
-        # Full-bleed background, a single centred card. Tracked as _login_root so
-        # it can be torn down (and rebuilt) for single-window navigation.
-        self._login_root = ctk.CTkFrame(self.app, fg_color=C("bg"), corner_radius=0)
+        from login_design import (BG, CARD, BORDER, PRIMARY, PRIMARY_INK, HOVER,
+                                  WHITE, SECONDARY, QUIET, face, logo, load_fonts)
+        apply_appearance("dark")
+        load_fonts()
+        self.app.configure(fg_color=BG)
+        self._login_root = ctk.CTkFrame(self.app, fg_color=BG, corner_radius=0)
         self._login_root.pack(fill="both", expand=True)
-
-        card = ctk.CTkFrame(
-            self._login_root,
-            fg_color=C("surface"),
-            corner_radius=18,
-            border_width=1,
-            border_color=C("border"),
-        )
-        card.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.88, relheight=0.92)
-
-        # Inner column with comfortable padding.
-        form = ctk.CTkFrame(card, fg_color="transparent")
-        form.pack(fill="both", expand=True, padx=34, pady=30)
-
-        # ---- Brand header ----
-        badge = ctk.CTkFrame(form, width=52, height=52, corner_radius=14, fg_color=C("accent"))
-        badge.pack(anchor="w")
-        badge.pack_propagate(False)
-        ctk.CTkLabel(badge, text="D", font=font(24, "bold"),
-                     text_color=C("accentInk")).pack(expand=True)
-
-        ctk.CTkLabel(form, text="Developer Tracker", font=font(22, "bold"),
-                     text_color=C("ink"), anchor="w").pack(anchor="w", pady=(16, 2))
-        ctk.CTkLabel(form, text="Visible time and activity tracking for your workspace.",
-                     font=font(13), text_color=C("muted"), anchor="w").pack(anchor="w")
-
-        # ---- Welcome ----
-        ctk.CTkLabel(form, text="Welcome back", font=font(19, "bold"),
-                     text_color=C("ink"), anchor="w").pack(anchor="w", pady=(26, 2))
-        ctk.CTkLabel(form, text="Sign in to start tracking your session.",
-                     font=font(13), text_color=C("muted"), anchor="w").pack(anchor="w", pady=(0, 20))
-
-        # ---- Email ----
-        ctk.CTkLabel(form, text="Email", font=font(13, "bold"),
-                     text_color=C("ink"), anchor="w").pack(anchor="w", pady=(0, 6))
-        self.email_input = ctk.CTkEntry(
-            form, height=46, placeholder_text="you@company.com", font=font(14),
-            corner_radius=11, border_width=1, border_color=C("border"),
-            fg_color=C("surface2"), text_color=C("ink"),
-        )
-        self.email_input.pack(fill="x", pady=(0, 16))
-
-        # ---- Password ----
-        ctk.CTkLabel(form, text="Password", font=font(13, "bold"),
-                     text_color=C("ink"), anchor="w").pack(anchor="w", pady=(0, 6))
-        self.pass_input = ctk.CTkEntry(
-            form, height=46, placeholder_text="Enter your password", show="•", font=font(14),
-            corner_radius=11, border_width=1, border_color=C("border"),
-            fg_color=C("surface2"), text_color=C("ink"),
-        )
-        self.pass_input.pack(fill="x", pady=(0, 12))
-
-        # ---- Remember / Forgot ----
-        row = ctk.CTkFrame(form, fg_color="transparent")
-        row.pack(fill="x", pady=(0, 20))
-        ctk.CTkCheckBox(
-            row, text="Remember me", variable=self.remember_var, onvalue=True, offvalue=False,
-            font=font(13), text_color=C("muted"), checkbox_height=20, checkbox_width=20,
-            corner_radius=6, border_width=2, border_color=C("border"),
-            fg_color=C("accent"), hover_color=C("accentHover"),
-        ).pack(side="left")
-        ctk.CTkButton(
-            row, text="Forgot password?", command=self.show_forgot_password,
-            fg_color="transparent", hover_color=C("accentWeak"), text_color=C("accent"),
-            font=font(13, "bold"), width=1, height=28,
-        ).pack(side="right")
-
-        # ---- Primary button ----
-        ctk.CTkButton(
-            form, text="Sign in & start", command=self.login, height=48, corner_radius=12,
-            font=font(15, "bold"), fg_color=C("accent"), hover_color=C("accentHover"),
-            text_color=C("accentInk"), border_width=0,
-        ).pack(fill="x", pady=(0, 18))
-
-        # ---- Footer ----
-        footer = ctk.CTkFrame(form, fg_color="transparent")
+        root = self._login_root
+        root.grid_rowconfigure(0, weight=1)
+        root.grid_columnconfigure(0, weight=1)
+        shell = ctk.CTkFrame(root, fg_color=CARD, border_color=BORDER,
+                             border_width=1, corner_radius=20)
+        shell.grid(row=0, column=0, sticky="nsew", padx=22, pady=22)
+        shell.grid_rowconfigure(0, weight=1)
+        shell.grid_columnconfigure(1, weight=1)
+        self._brand = ctk.CTkFrame(shell, width=290, fg_color=BG, corner_radius=14)
+        self._brand.grid(row=0, column=0, sticky="nsew", padx=(8,0), pady=8)
+        self._brand.grid_propagate(False)
+        self._brand.grid_columnconfigure(0, weight=1)
+        self._brand.grid_rowconfigure(1, weight=1)
+        lockup = ctk.CTkFrame(self._brand, fg_color="transparent")
+        lockup.grid(row=0, column=0, sticky="w", padx=26, pady=(28,0))
+        self._logo = logo()
+        ctk.CTkLabel(lockup, text="", image=self._logo, width=36).pack(side="left")
+        ctk.CTkLabel(lockup, text="Verisade", font=face(23,True,True),
+                     text_color=WHITE).pack(side="left", padx=(10,0))
+        self._brand_body = ctk.CTkFrame(self._brand, fg_color="transparent")
+        self._brand_body.grid(row=1, column=0, sticky="ew", padx=26)
+        ctk.CTkLabel(self._brand_body, text="A LITTLE MORE FOCUS", font=face(10,True),
+                     text_color=PRIMARY, anchor="w").pack(fill="x", pady=(0,16))
+        ctk.CTkLabel(self._brand_body, text="Make time\nfor good work.", font=face(30,True,True),
+                     text_color=WHITE, justify="left", anchor="w").pack(fill="x")
+        ctk.CTkLabel(self._brand_body, text="Your work, your time.\nOne clear place to begin.", font=face(14),
+                     text_color=SECONDARY, justify="left", anchor="w").pack(fill="x", pady=(14,26))
+        note = ctk.CTkFrame(self._brand_body, fg_color=CARD, border_width=1,
+                            border_color=BORDER, corner_radius=12)
+        note.pack(fill="x")
+        ctk.CTkLabel(note, text="Built around your workday", font=face(12,True),
+                     text_color=WHITE, anchor="w").pack(fill="x", padx=14, pady=(14,3))
+        ctk.CTkLabel(note, text="Start. Focus. Take a break.", font=face(12),
+                     text_color=SECONDARY, anchor="w").pack(fill="x", padx=14, pady=(0,14))
+        self._brand_footer = ctk.CTkLabel(self._brand, text="DESKTOP TRACKER", font=face(10,True),
+                                         text_color=QUIET, anchor="w")
+        self._brand_footer.grid(row=2, column=0, sticky="w", padx=26, pady=26)
+        self._form_area = ctk.CTkFrame(shell, fg_color="transparent")
+        self._form_area.grid(row=0,column=1,sticky="nsew",padx=36,pady=26)
+        self._form_area.grid_columnconfigure(0,weight=1)
+        self._form_area.grid_rowconfigure((0,2),weight=1)
+        form = ctk.CTkFrame(self._form_area, fg_color="transparent")
+        form.grid(row=1,column=0,sticky="ew")
+        ctk.CTkLabel(form,text="Welcome back",font=face(29,True,True),
+                     text_color=WHITE,anchor="w").pack(fill="x")
+        ctk.CTkLabel(form,text="Sign in to your workspace to get started.",font=face(13),
+                     text_color=SECONDARY,anchor="w").pack(fill="x",pady=(6,26))
+        self._focus_widgets = []
+        for label, attr, placeholder, hidden in [
+                ("Email","email_input","you@company.com",False),
+                ("Password","pass_input","Enter your password",True)]:
+            ctk.CTkLabel(form,text=label,font=face(12,True),text_color=WHITE,
+                         anchor="w").pack(fill="x",pady=(0,7))
+            entry=ctk.CTkEntry(form,height=46,corner_radius=9,border_width=1,
+                border_color=BORDER,fg_color=BG,text_color=WHITE,
+                placeholder_text=placeholder,placeholder_text_color=QUIET,
+                show="•" if hidden else "",font=face(14))
+            entry.pack(fill="x",pady=(0,18 if not hidden else 12))
+            entry.bind("<FocusIn>",lambda event,e=entry:e.configure(border_color=PRIMARY),add="+")
+            entry.bind("<FocusOut>",lambda event,e=entry:e.configure(border_color=BORDER),add="+")
+            entry.bind("<Return>",lambda event:self._submit_login())
+            setattr(self,attr,entry)
+        row=ctk.CTkFrame(form,fg_color="transparent")
+        row.pack(fill="x",pady=(0,18))
+        self.remember_check=ctk.CTkCheckBox(row,text="Remember me",variable=self.remember_var,
+            onvalue=True,offvalue=False,font=face(12),text_color=SECONDARY,
+            checkbox_width=18,checkbox_height=18,corner_radius=4,border_width=1,
+            border_color=QUIET,fg_color=PRIMARY,hover_color=HOVER,checkmark_color=PRIMARY_INK)
+        self.remember_check.pack(side="left")
+        self.remember_check._canvas.configure(takefocus=1)
+        self.remember_check._canvas.bind("<space>",lambda event:self.remember_check.toggle())
+        self.remember_check._canvas.bind("<FocusIn>",lambda event:self.remember_check.configure(border_color=PRIMARY))
+        self.remember_check._canvas.bind("<FocusOut>",lambda event:self.remember_check.configure(border_color=QUIET))
+        def button(parent,text,command,primary=False):
+            b=ctk.CTkButton(parent,text=text,command=command,font=face(13,True),
+                height=46 if primary else 30,width=1,corner_radius=9,
+                fg_color=PRIMARY if primary else "transparent",hover_color=HOVER if primary else BG,
+                text_color=PRIMARY_INK if primary else WHITE,border_width=2,
+                border_color=PRIMARY if primary else CARD)
+            b._canvas.configure(takefocus=1)
+            b._canvas.bind("<Return>",lambda event:b.invoke())
+            b._canvas.bind("<space>",lambda event:b.invoke())
+            b._canvas.bind("<FocusIn>",lambda event:b.configure(border_color=WHITE))
+            b._canvas.bind("<FocusOut>",lambda event:b.configure(border_color=PRIMARY if primary else CARD))
+            return b
+        self.forgot_button=button(row,"Forgot password?",self.show_forgot_password)
+        self.forgot_button.pack(side="right")
+        self.signin_button=button(form,"Sign in & start",self._submit_login,True)
+        self.signin_button.pack(fill="x")
+        ctk.CTkLabel(form,text="Remember me saves your email only.",font=face(11),
+                     text_color=QUIET).pack(pady=(10,18))
+        ctk.CTkFrame(form,height=1,fg_color=BORDER).pack(fill="x",pady=(0,14))
+        footer=ctk.CTkFrame(form,fg_color="transparent")
         footer.pack()
-        ctk.CTkLabel(footer, text="New here?", font=font(13),
-                     text_color=C("muted")).pack(side="left")
-        ctk.CTkButton(
-            footer, text="Create an account", command=self.show_register,
-            fg_color="transparent", hover_color=C("accentWeak"), text_color=C("accent"),
-            font=font(13, "bold"), width=1, height=28,
-        ).pack(side="left", padx=(6, 0))
+        ctk.CTkLabel(footer,text="New to Verisade?",font=face(12),text_color=SECONDARY).pack(side="left")
+        self.register_button=button(footer,"Create an account",self.show_register)
+        self.register_button.pack(side="left",padx=(4,0))
+        self._compact = None
+        def resize(event):
+            compact=root.winfo_width()/root._get_widget_scaling()<780
+            if compact==self._compact:
+                return
+            self._compact=compact
+            if compact:
+                shell.grid_rowconfigure(0,weight=0)
+                shell.grid_rowconfigure(1,weight=1)
+                self._brand.configure(height=76)
+                self._brand.grid(row=0,column=0,columnspan=2,sticky="ew",padx=8,pady=(8,0))
+                lockup.grid_configure(pady=18)
+                self._brand_body.grid_remove()
+                self._brand_footer.grid_remove()
+                self._form_area.grid(row=1,column=0,columnspan=2,padx=26,pady=(10,22))
+            else:
+                shell.grid_rowconfigure(0,weight=1)
+                shell.grid_rowconfigure(1,weight=0)
+                self._brand.grid(row=0,column=0,columnspan=1,sticky="nsew",padx=(8,0),pady=8)
+                lockup.grid_configure(pady=(28,0))
+                self._brand_body.grid()
+                self._brand_footer.grid()
+                self._form_area.grid(row=0,column=1,columnspan=1,padx=36,pady=26)
+        root.bind("<Configure>",resize)
+        self.app.after_idle(self.email_input.focus_set)
+
+    def _submit_login(self):
+        if getattr(self,"_logging_in",False):
+            return
+        self.signin_button.configure(text="Signing in…",state="disabled")
+        self.app.update_idletasks()
+        try:
+            self.login()
+        finally:
+            if self.signin_button.winfo_exists():
+                self.signin_button.configure(text="Sign in & start",state="normal")
 
     # ------------------------------------------------------------------
     #  Behaviour (preserved verbatim)
@@ -190,6 +243,7 @@ class LoginWindow:
                 # Single-window: swap the login view for the dashboard IN THE
                 # SAME window — no second window opens.
                 self._login_root.destroy()
+                self.app.minsize(440, 600)
                 self.app.geometry("640x600")
                 try:
                     self.dashboard = DashboardWindow(user, self.auth, self)
