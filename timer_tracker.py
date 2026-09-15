@@ -341,12 +341,15 @@ class TimerTracker:
                     session_id=session_id,
                     user_id=self.user_id,
                     user_email=self.user_email,
-                    start_time=datetime.now().isoformat(),
+                    start_time=datetime.now().astimezone().isoformat(),
                     status="active",
                     project_id=project_id,
                     task_id=task_id,
                 )
 
+                if self._checkpoint_session(session_id) is False:
+                    raise TrackingWorkError("Local session storage is unavailable. Check disk space before starting.")
+                self._spawn(lambda: self._local_checkpoint_loop(ctx), "LocalSessionCheckpoint")
                 self._spawn(lambda: self._tracker_lifecycle(ctx), "TrackerLifecycle")
                 self._spawn(lambda: self._display_loop(ctx),      "DisplayLoop")
                 self._spawn(lambda: self._idle_reminder_loop(ctx, self._idle_reminder), "IdleReminder")
@@ -358,11 +361,22 @@ class TimerTracker:
             except Exception as e:
                 self.start_error = str(e) if isinstance(e, TrackingWorkError) else "Tracking could not start. Please try again."
                 log.error(f"start() error: {e}", exc_info=True)
+                self.instant_timer.stop()
                 self._session_state = SessionState.IDLE
                 self._presence_state("idle")
                 if self._ctx:
                     self._ctx.stop_event.set()
                 return False
+
+    def pause_for_system(self, reason):
+        # No automatic resume or retrospective idle deduction. The event creates
+        # the same durable break as an explicit employee pause.
+        with self._api_lock:
+            if self._shutdown_event.is_set() or self._session_state != SessionState.RUNNING:
+                return
+            self.system_pause_reason = reason
+            if not self.pause():
+                self.stop()
 
     def pause(self) -> bool:
         with self._api_lock:
@@ -420,6 +434,7 @@ class TimerTracker:
                     self._ctx.pause_ctrl.resume()  # ← wakes ALL worker loops
 
                 self._session_state = SessionState.RUNNING
+                self.system_pause_reason = None
                 if self.session:
                     self.session.status = "active"
 
@@ -458,7 +473,7 @@ class TimerTracker:
                 self._presence_state("idle")
 
                 if self.session:
-                    self.session.end_time        = datetime.now().isoformat()
+                    self.session.end_time        = datetime.now().astimezone().isoformat()
                     self.session.total_duration  = total_elapsed
                     active, idle = self._compute_active_idle(total_elapsed)
                     self.session.active_duration = active
@@ -609,6 +624,16 @@ class TimerTracker:
     #  PERIODIC STATS UPLOAD (every 60 seconds)
     # =========================================================================
 
+    def _local_checkpoint_loop(self, ctx):
+        # Disk durability is independent of slow/offline provider requests.
+        # A crash recovers the last confirmed checkpoint, never time after it.
+        while not ctx.stop_event.wait(5):
+            with self._api_lock:
+                if self._ctx is not ctx or self._session_state != SessionState.RUNNING:
+                    continue
+                if self._checkpoint_session(ctx.session_id) is False:
+                    return
+
     def _periodic_stats_loop(self, ctx: _SessionContext) -> None:
         """Collect stats from all trackers and insert into Supabase every 60s."""
         INTERVAL = 60
@@ -652,7 +677,7 @@ class TimerTracker:
         if not session or session.session_id != session_id:
             return
         elapsed = self.instant_timer.get_elapsed()
-        now_iso = datetime.now().isoformat()
+        now_iso = datetime.now().astimezone().isoformat()
 
         mouse_events    = 0
         keyboard_events = 0
@@ -821,7 +846,7 @@ class TimerTracker:
             if kt is None or kt._input_sync is None:
                 return
             kt.session_summary = _kb_empty_summary()
-            kt.session_summary["start_time"] = datetime.now().isoformat()
+            kt.session_summary["start_time"] = datetime.now().astimezone().isoformat()
             kt.session_summary["session_id"] = kt._session_id
             kt._tracking.start()
             kt._uploader = _KBUploadWorker(
@@ -1056,7 +1081,7 @@ class TimerTracker:
             # for completed sessions.
             if not session.end_time:
                 try:
-                    session.end_time = datetime.now().isoformat()
+                    session.end_time = datetime.now().astimezone().isoformat()
                 except Exception:
                     pass
 
@@ -1157,7 +1182,7 @@ class TimerTracker:
                 uploaded = self._outbox.replay(lambda row: self._upsert_session(row, retries=1))
                 self._sync_status["pending"] = self._outbox.count()
                 if uploaded:
-                    self._sync_status["last_success_at"] = datetime.now().isoformat()
+                    self._sync_status["last_success_at"] = datetime.now().astimezone().isoformat()
                 self._sync_status["error"] = ("A saved session needs recovery" if self._outbox.last_replay_error else
                                               "Sessions are saved locally; upload will retry"
                                               if self._sync_status["pending"] else None)

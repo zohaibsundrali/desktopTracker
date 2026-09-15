@@ -5,6 +5,7 @@ This consolidates the previous packaging PR and the desktop release completion w
 ## Included behavior
 
 - Explicit project/task or General tracking; Start, Pause, Resume and Stop; manual break records and policy-controlled advisory idle reminders.
+- Session timestamps include an explicit timezone offset so a Windows local time is not silently interpreted as UTC by the backend.
 - Session capture commits its initial checkpoint before starting workers, then checkpoints locally every five seconds independently of provider requests. Recovery retains the original account and organization. Abrupt power loss can still lose the interval since the last successful disk checkpoint; the app never invents elapsed time after that checkpoint.
 - Durable screenshot, input aggregate and app/site queues with separate visible synchronization status; policy and authorization checks; device presence and revocation handling.
 - Windows lock, session disconnect, sign-out and suspend notifications pause through the existing durable break workflow. Unlock/wake never resumes tracking automatically. If Windows notification registration is unavailable, Start/Resume are unavailable and the employee can save diagnostics. Device-specific suspend delivery still needs physical testing.
