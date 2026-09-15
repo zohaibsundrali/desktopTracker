@@ -1075,6 +1075,10 @@ class DashboardWindow:
             "Setup diagnostics", "Saved an offline setup report. It contains no credentials, screenshots, window titles or account identity."))
 
     def check_updates(self):
+        from store_distribution import is_store_distribution
+        if is_store_distribution():
+            messagebox.showinfo("Verisade updates", "Microsoft Store manages updates for this app. Open Microsoft Store and check for updates.")
+            return
         from desktop_updates import check_for_update, download_update
         from config import user_data_dir
         def finished(release):

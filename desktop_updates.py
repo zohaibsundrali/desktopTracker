@@ -116,6 +116,9 @@ def _read(url, limit, sink=None):
 
 
 def check_for_update():
+    from store_distribution import is_store_distribution
+    if is_store_distribution():
+        raise UpdateError("Microsoft Store manages this installation. Check for updates in Microsoft Store.")
     try:
         return parse_release(json.loads(_read(API, 512 * 1024)))
     except (ValueError, TypeError, UnicodeError):
@@ -155,6 +158,9 @@ def verify_signature(path, signers=TRUSTED_SIGNERS):
 
 
 def download_update(release, directory, reader=_read, verifier=verify_signature):
+    from store_distribution import is_store_distribution
+    if is_store_distribution():
+        raise UpdateError("Update this installation through Microsoft Store.")
     # This gate is deliberately not bypassed for unsigned test candidates.
     if not TRUSTED_SIGNERS:
         raise UpdateError('Signing is not configured for this test build. Obtain the test installer from your administrator.')

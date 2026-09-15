@@ -42,6 +42,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Smoke test the actual dashboard without capture
         run: python scripts/ui_smoke.py
+      - name: Check login layout and keyboard actions
+        run: python scripts/login_ui_smoke.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: login-preview-${{ github.sha }}
+          path: Output/login-preview/
+          if-no-files-found: error
       - name: Prepare public configuration
         env:
           SUPABASE_URL: ${{ vars.DESKTOP_SUPABASE_URL }}
@@ -62,6 +69,14 @@ jobs:
         run: |
           python -m PyInstaller tracker.spec --noconfirm
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and validate Verisade Store package
+        run: ./scripts/build_msix.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verisade-store-${{ github.sha }}
+          path: Output/store/
+          if-no-files-found: error
+          retention-days: 14
       - name: Prepare signing certificate
         if: github.event_name == 'workflow_dispatch' && inputs.signed
         env:
