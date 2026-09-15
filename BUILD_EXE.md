@@ -23,6 +23,17 @@ are rejected. Failed validation removes an earlier generated config so the
 wrong project's previous bundle cannot be reused. Environment variables take
 precedence over the source `.env`; interpolation is disabled.
 
+Apply the reviewed application migrations in their release order. Existing
+tracking policies require an authenticated, enrolled device; do not replace
+them with broad policies to work around a permission error.
+
+For live device presence, first apply the companion web repository migration
+`20260912154948_production_tracker_device_presence.sql`. Then build this desktop
+version, install it, and sign in. Verify start, pause, resume and stop in the
+monitoring dashboard. Heartbeats continue every 30 seconds while paused;
+without a heartbeat, the dashboard marks the device disconnected after 90
+seconds. The old desktop build cannot report this new presence signal.
+
 ## Local Windows build
 
 Install Python 3.12 and Inno Setup 6, then run:
