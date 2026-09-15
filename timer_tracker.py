@@ -347,6 +347,9 @@ class TimerTracker:
                     task_id=task_id,
                 )
 
+                if self._checkpoint_session(session_id) is False:
+                    raise TrackingWorkError("Local session storage is unavailable. Check disk space before starting.")
+                self._spawn(lambda: self._local_checkpoint_loop(ctx), "LocalSessionCheckpoint")
                 self._spawn(lambda: self._tracker_lifecycle(ctx), "TrackerLifecycle")
                 self._spawn(lambda: self._display_loop(ctx),      "DisplayLoop")
                 self._spawn(lambda: self._idle_reminder_loop(ctx, self._idle_reminder), "IdleReminder")
@@ -358,11 +361,22 @@ class TimerTracker:
             except Exception as e:
                 self.start_error = str(e) if isinstance(e, TrackingWorkError) else "Tracking could not start. Please try again."
                 log.error(f"start() error: {e}", exc_info=True)
+                self.instant_timer.stop()
                 self._session_state = SessionState.IDLE
                 self._presence_state("idle")
                 if self._ctx:
                     self._ctx.stop_event.set()
                 return False
+
+    def pause_for_system(self, reason):
+        # No automatic resume or retrospective idle deduction. The event creates
+        # the same durable break as an explicit employee pause.
+        with self._api_lock:
+            if self._shutdown_event.is_set() or self._session_state != SessionState.RUNNING:
+                return
+            self.system_pause_reason = reason
+            if not self.pause():
+                self.stop()
 
     def pause(self) -> bool:
         with self._api_lock:
@@ -420,6 +434,7 @@ class TimerTracker:
                     self._ctx.pause_ctrl.resume()  # ← wakes ALL worker loops
 
                 self._session_state = SessionState.RUNNING
+                self.system_pause_reason = None
                 if self.session:
                     self.session.status = "active"
 
@@ -608,6 +623,16 @@ class TimerTracker:
     # =========================================================================
     #  PERIODIC STATS UPLOAD (every 60 seconds)
     # =========================================================================
+
+    def _local_checkpoint_loop(self, ctx):
+        # Disk durability is independent of slow/offline provider requests.
+        # A crash recovers the last confirmed checkpoint, never time after it.
+        while not ctx.stop_event.wait(5):
+            with self._api_lock:
+                if self._ctx is not ctx or self._session_state != SessionState.RUNNING:
+                    continue
+                if self._checkpoint_session(ctx.session_id) is False:
+                    return
 
     def _periodic_stats_loop(self, ctx: _SessionContext) -> None:
         """Collect stats from all trackers and insert into Supabase every 60s."""
