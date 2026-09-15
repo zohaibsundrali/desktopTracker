@@ -83,7 +83,7 @@ public_values = dotenv_values(public_env, interpolate=False)
 if set(public_values) - {"SUPABASE_URL", "SUPABASE_KEY", "SCREENSHOTS_ENABLED"}:
     raise SystemExit("Prepared config contains non-public fields. Re-run prepare_public_config.py.")
 validate_public_config(public_values)
-datas += [(public_env, ".")]
+datas += [(public_env, "."), ("assets/fonts", "assets/fonts")]
 
 # ---- Optional app icon -------------------------------------------------------
 icon_file = "app.ico" if os.path.exists("app.ico") else None
