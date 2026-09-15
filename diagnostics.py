@@ -5,11 +5,12 @@ import os
 from pathlib import Path
 import platform
 import tempfile
+from app_version import VERSION
 
 from public_config import PublicConfigError, validate_public_config
 
 CORE_MODULES = ('customtkinter', 'supabase', 'psutil', 'PIL', 'dotenv', 'sqlite3')
-WINDOWS_MODULES = ('win32gui', 'win32process', 'pynput.keyboard._win32', 'pynput.mouse._win32', 'uiautomation')
+WINDOWS_MODULES = ('win32ts', 'win32gui', 'win32process', 'pynput.keyboard._win32', 'pynput.mouse._win32', 'uiautomation')
 
 
 def collect_report(values=None, system=None, importer=None, data_directory=None):
@@ -46,7 +47,7 @@ def collect_report(values=None, system=None, importer=None, data_directory=None)
         add('writable_user_data', True, 'Per-user data storage is writable.')
     except Exception:
         add('writable_user_data', False, 'Per-user data storage is unavailable. Check permissions and disk space.')
-    return {'schema_version': 1, 'scope': 'offline_setup_only',
+    return {'schema_version': 1, 'app_version': VERSION, 'scope': 'offline_setup_only',
             'ready_for_manual_test': all(check['status'] == 'pass' for check in checks),
             'checks': checks,
             'not_tested': ['sign_in_and_device_enrollment', 'screen_and_input_capture',

@@ -35,15 +35,17 @@ build_exe.bat
 The app is `dist\DeveloperTracker\DeveloperTracker.exe`. The installer is
 `Output\DeveloperTracker-Setup.exe`. Dependency/config/build failures stop the
 batch command rather than claiming that a stale executable is a successful build.
-The installer remains unsigned; code signing and automatic updates are not
-implemented by this release.
+The default installer is an explicitly marked unsigned testing candidate. The
+optional signing pipeline and verified update download are described in
+[the release candidate guide](docs/desktop-release-candidate.md). No signing
+certificate is currently configured.
 
 ## GitHub Windows build
 
 The Windows desktop build workflow runs the Python regression suite, prepares
 public configuration, freezes the app, runs its packaged offline diagnostics,
 and compiles the installer. It uploads a 14-day artifact named with the commit
-SHA containing the installer, SHA-256 checksum and diagnostics report.
+SHA containing the installer, SHA-256 checksum, version manifest and diagnostics report.
 
 For main/manual builds, repository variables `DESKTOP_SUPABASE_URL` and
 `DESKTOP_SUPABASE_PUBLIC_KEY` configure the public project and legacy anon key.
@@ -89,3 +91,5 @@ history before applying it, and do not replay an old bundle.
 
 Record the app commit, Windows version, test date and pass/fail results. A CI
 artifact or a successful homepage deploy cannot substitute for this journey.
+
+The version is generated from `app_version.py` using `python scripts/prepare_version.py`. Keep the existing installer AppId to preserve upgrade identity. Setup refuses to replace an app holding its running mutex; it does not force-close tracking. Uninstall and upgrade leave per-user pending queues intact.

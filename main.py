@@ -65,7 +65,14 @@ def main():
     except PublicConfigError as exc:
         _fatal("Configuration error", str(exc) + "\n\nPlease contact your administrator.")
         return 1
+    from config import user_data_dir
+    from instance_lock import InstanceLock
+    instance = None
     try:
+        instance = InstanceLock(user_data_dir())
+        if not instance.acquire():
+            _fatal("DevTrack is already open", "Use the existing DevTrack window. Only one tracker can run for this Windows user.")
+            return 1
         from gui_login import main as gui_main
         gui_main()
     except ImportError as e:
@@ -76,6 +83,10 @@ def main():
         traceback.print_exc()
         _fatal("Unexpected error", f"The application could not start:\n\n{e}")
         sys.exit(1)
+
+    finally:
+        if instance:
+            instance.release()
 
 
 if __name__ == "__main__":

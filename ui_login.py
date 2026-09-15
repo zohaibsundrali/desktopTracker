@@ -80,7 +80,7 @@ class LoginWindow:
 
         ctk.CTkLabel(form, text="Developer Tracker", font=font(22, "bold"),
                      text_color=C("ink"), anchor="w").pack(anchor="w", pady=(16, 2))
-        ctk.CTkLabel(form, text="Private, on-device productivity tracking.",
+        ctk.CTkLabel(form, text="Visible time and activity tracking for your workspace.",
                      font=font(13), text_color=C("muted"), anchor="w").pack(anchor="w")
 
         # ---- Welcome ----

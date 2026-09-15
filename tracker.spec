@@ -21,6 +21,12 @@ for pkg in ("customtkinter", "supabase", "pynput", "pyautogui", "PIL"):
 # Extra hidden imports some deps pull in dynamically.
 hiddenimports += [
     "diagnostics",
+    "app_version",
+    "instance_lock",
+    "desktop_updates",
+    "desktop_support",
+    "windows_session_guard",
+    "win32ts",
     "public_config",
     "session_outbox",
     "screenshot_outbox",

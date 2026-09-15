@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      signed:
+        description: Build with the configured production signing certificate
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -35,6 +40,8 @@ jobs:
         run: |
           python -m unittest discover -s tests
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Smoke test the actual dashboard without capture
+        run: python scripts/ui_smoke.py
       - name: Prepare public configuration
         env:
           SUPABASE_URL: ${{ vars.DESKTOP_SUPABASE_URL }}
@@ -49,10 +56,21 @@ jobs:
           }
           python scripts/prepare_public_config.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare application version
+        run: python scripts/prepare_version.py
       - name: Build frozen application
         run: |
           python -m PyInstaller tracker.spec --noconfirm
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare signing certificate
+        if: github.event_name == 'workflow_dispatch' && inputs.signed
+        env:
+          DESKTOP_SIGNING_PFX: ${{ secrets.DESKTOP_SIGNING_PFX }}
+          DESKTOP_SIGNING_PASSWORD: ${{ secrets.DESKTOP_SIGNING_PASSWORD }}
+        run: |
+          if (Test-Path BUILD-NOT-CONFIGURED.txt) { throw 'A signed release requires real public configuration' }
+          ./scripts/prepare_signing.ps1
+          ./scripts/sign_file.ps1 -FilePath dist/DeveloperTracker/DeveloperTracker.exe
       - name: Check frozen application setup
         run: |
           $process = Start-Process -FilePath dist/DeveloperTracker/DeveloperTracker.exe -ArgumentList '--diagnostics', 'desktop-diagnostics.json' -PassThru
@@ -61,15 +79,35 @@ jobs:
           if (!(Test-Path desktop-diagnostics.json)) { throw 'No packaged diagnostics report' }
       - name: Compile installer
         run: |
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if ($env:DESKTOP_SIGNING_THUMBPRINT) {
+            $signer = 'releaseSigner=powershell.exe -NoProfile -NonInteractive -File "' + $PWD.Path + '\scripts\sign_file.ps1" -FilePath $f'
+            & $compiler /DSignedBuild "/S$signer" installer.iss
+          } else {
+            & $compiler installer.iss
+          }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-FileHash Output/DeveloperTracker-Setup.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  DeveloperTracker-Setup.exe" } | Set-Content Output/SHA256SUMS.txt
+          if ($env:DESKTOP_SIGNING_THUMBPRINT) {
+            $signature = Get-AuthenticodeSignature Output/DeveloperTracker-Setup.exe
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:DESKTOP_SIGNING_THUMBPRINT) { throw 'Installer signature invalid' }
+            $env:DESKTOP_SIGNING_VERIFIED = 'true'
+          }
+          python scripts/release_manifest.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Remove temporary signing certificate
+        if: always()
+        run: |
+          if ($env:DESKTOP_SIGNING_THUMBPRINT) {
+            Remove-Item "Cert:\CurrentUser\My\$env:DESKTOP_SIGNING_THUMBPRINT" -Force -ErrorAction SilentlyContinue
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-desktop-${{ github.sha }}
           path: |
             Output/DeveloperTracker-Setup.exe
             Output/SHA256SUMS.txt
+            Output/release-manifest.json
+            Output/UNSIGNED-TEST-BUILD.txt
             desktop-diagnostics.json
             BUILD-NOT-CONFIGURED.txt
           if-no-files-found: error

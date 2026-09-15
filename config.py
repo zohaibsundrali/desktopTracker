@@ -2,6 +2,7 @@
 import os
 import sys
 from dotenv import load_dotenv
+from app_version import VERSION as APP_VERSION
 
 load_dotenv()
 
@@ -36,7 +37,7 @@ class Config:
 
     # App Configuration
     APP_NAME = "Developer Activity And  Productivity Tracking"
-    VERSION = "1.0.0"
+    VERSION = APP_VERSION
 
     # Paths
     DATA_DIR = "user_data"

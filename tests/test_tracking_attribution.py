@@ -71,5 +71,38 @@ class TrackingAttributionTests(unittest.TestCase):
 
     def test_stale_periodic_session_cannot_take_new_session_selection(self):
         self.assertTrue(self.tracker.start(PROJECT,TASK))
+        self.tracker._persist_session.reset_mock()
         self.tracker._upload_periodic_stats('old-session')
+        self.tracker._persist_session.assert_not_called()
+
+    def test_initial_checkpoint_precedes_capture_threads(self):
+        self.tracker._spawn.side_effect=lambda *args:self.assertTrue(self.tracker._persist_session.called)
+        self.assertTrue(self.tracker.start())
+        self.assertEqual(self.tracker._persist_session.call_args.kwargs,{'flush':False})
+
+    def test_failed_initial_checkpoint_never_starts_workers(self):
+        self.tracker._persist_session.return_value=False
+        self.assertFalse(self.tracker.start())
+        self.tracker._spawn.assert_not_called()
+        self.assertFalse(self.tracker.instant_timer.is_active)
+
+    def test_local_checkpoints_do_not_wait_for_network_replay(self):
+        self.assertTrue(self.tracker.start())
+        ctx=self.tracker._ctx
+        ctx.stop_event=MagicMock()
+        ctx.stop_event.wait.side_effect=[False,True]
+        self.tracker._persist_session.reset_mock()
+        self.tracker._local_checkpoint_loop(ctx)
+        self.tracker._persist_session.assert_called_once()
+        self.assertEqual(self.tracker._persist_session.call_args.kwargs,{'flush':False})
+        self.tracker._flush_pending_sessions.assert_not_called()
+
+    def test_old_checkpoint_worker_cannot_write_a_new_session(self):
+        self.assertTrue(self.tracker.start())
+        ctx=self.tracker._ctx
+        ctx.stop_event=MagicMock()
+        ctx.stop_event.wait.side_effect=[False,True]
+        self.tracker._ctx=object()
+        self.tracker._persist_session.reset_mock()
+        self.tracker._local_checkpoint_loop(ctx)
         self.tracker._persist_session.assert_not_called()
