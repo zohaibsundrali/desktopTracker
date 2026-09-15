@@ -106,3 +106,10 @@ class TrackingAttributionTests(unittest.TestCase):
         self.tracker._persist_session.reset_mock()
         self.tracker._local_checkpoint_loop(ctx)
         self.tracker._persist_session.assert_not_called()
+
+    def test_session_and_checkpoint_timestamps_carry_an_explicit_offset(self):
+        from datetime import datetime
+        self.assertTrue(self.tracker.start())
+        row=self.tracker._persist_session.call_args.args[0]
+        self.assertIsNotNone(datetime.fromisoformat(row['start_time']).utcoffset())
+        self.assertIsNotNone(datetime.fromisoformat(row['end_time']).utcoffset())
