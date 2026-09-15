@@ -1,5 +1,5 @@
 """One version shared by the app, installer and release manifests."""
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 REPOSITORY = 'zohaibsundrali/desktopTracker'
 APP_MUTEX = 'DeveloperTracker.Desktop'
 # Populate with the public SHA-1 certificate thumbprint when signing is enabled.

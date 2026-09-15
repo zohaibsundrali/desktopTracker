@@ -22,7 +22,7 @@ from timer_tracker import TimerTracker
 from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text, idle_reminder_text, activity_sync_text, input_sync_text
 from theme import (
     C, font, apply_appearance, Colors,
-    Card, Pill, BigTimer, ActivityRing,
+    Card, Pill, BigTimer, ActivityRing, ActionButton, metric_icon,
 )
 
 SIDEBAR_WIDTH = 180
@@ -51,11 +51,13 @@ class DashboardWindow:
         # of opening a new Toplevel. A dedicated container frame holds all the
         # dashboard UI so sign-out can tear it down and restore the login view.
         self.app = self.login_window.app
-        self.app.title(f"DevTrack {VERSION}")
+        self.app.title(f"Verisade {VERSION}")
         self.app.geometry("860x720")
         self.app.minsize(760, 600)
         self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
-        apply_appearance("light")
+        apply_appearance("dark")
+        from login_design import load_fonts
+        load_fonts()
         self.app.configure(fg_color=C("bg"))
         self._dash_root = ctk.CTkFrame(self.app, fg_color=C("bg"))
         self._dash_root.pack(fill="both", expand=True)
@@ -93,395 +95,252 @@ class DashboardWindow:
     #  UI construction (redesigned)
     # ------------------------------------------------------------------
     def setup_ui(self):
-        shell = ctk.CTkFrame(self._dash_root, fg_color="transparent")
-        shell.pack(fill="both", expand=True)
-        shell.grid_rowconfigure(0, weight=1)
-        shell.grid_columnconfigure(0, weight=0)
-        shell.grid_columnconfigure(1, weight=1)
-
+        shell=ctk.CTkFrame(self._dash_root,fg_color="transparent")
+        shell.pack(fill="both",expand=True)
+        shell.grid_rowconfigure(0,weight=1)
+        shell.grid_columnconfigure(1,weight=1)
         self._setup_header(shell)
-
-        # Main scrollable content area
-        self.main = ctk.CTkScrollableFrame(shell, fg_color="transparent")
-        self.main.grid(row=0, column=1, sticky="nsew")
-        self.main.grid_columnconfigure(0, weight=1)
-
+        self.main=ctk.CTkScrollableFrame(shell,fg_color=C("bg"),corner_radius=0,
+            scrollbar_button_color=C("border"),scrollbar_button_hover_color=C("muted"))
+        self.main.grid(row=0,column=1,sticky="nsew")
+        self.main.grid_columnconfigure(0,weight=1)
         self._setup_timer_section()
 
-    def _setup_header(self, parent):
-        """Fixed-width sidebar: brand, workspace nav, and a profile/sign-out block."""
-        sidebar = ctk.CTkFrame(
-            parent,
-            width=SIDEBAR_WIDTH,
-            corner_radius=0,
-            fg_color=C("surface"),
-            border_width=0,
-        )
-        sidebar.grid(row=0, column=0, sticky="nsew")
+    def _button(self,parent,text,command,tone=None,**kwargs):
+        fill=C(tone) if tone else C("surface2")
+        hover=C(tone+"Hover") if tone else C("border")
+        ink=C("accentInk") if tone in ("active","idle","accent") else C("ink")
+        button=ActionButton(parent,tone=tone,text=text,command=command,height=34,width=1,
+            corner_radius=8,font=font(12,"bold"),fg_color=fill,hover_color=hover,
+            text_color=ink,text_color_disabled=C("faint"),border_width=1,
+            border_color=fill,**kwargs)
+        button._canvas.configure(takefocus=1)
+        button._canvas.bind("<Return>",lambda event:button.invoke())
+        button._canvas.bind("<space>",lambda event:button.invoke())
+        button._canvas.bind("<FocusIn>",lambda event:button.configure(border_color=C("ink")))
+        button._canvas.bind("<FocusOut>",lambda event:button.configure(border_color=button.cget("fg_color")))
+        return button
+
+    def _setup_header(self,parent):
+        from login_design import logo, face
+        sidebar=ctk.CTkFrame(parent,width=SIDEBAR_WIDTH,corner_radius=0,fg_color=C("surface"))
+        sidebar.grid(row=0,column=0,sticky="nsew")
         sidebar.grid_propagate(False)
-        sidebar.grid_rowconfigure(2, weight=1)   # spacer row pushes profile down
-        sidebar.grid_columnconfigure(0, weight=1)
+        sidebar.grid_columnconfigure(0,weight=1)
+        sidebar.grid_rowconfigure(2,weight=1)
+        ctk.CTkFrame(parent,width=1,corner_radius=0,fg_color=C("border")).grid(row=0,column=0,sticky="nse")
+        brand=ctk.CTkFrame(sidebar,fg_color="transparent")
+        brand.grid(row=0,column=0,sticky="ew",padx=16,pady=(24,28))
+        self._brand_logo=logo(30)
+        ctk.CTkLabel(brand,text="",image=self._brand_logo,width=30).pack(side="left")
+        ctk.CTkLabel(brand,text="Verisade",font=face(20,True,True),text_color=C("ink")).pack(side="left",padx=(8,0))
+        nav=ctk.CTkFrame(sidebar,fg_color="transparent")
+        nav.grid(row=1,column=0,sticky="ew",padx=10)
+        ctk.CTkLabel(nav,text="WORKSPACE",font=font(10,"bold"),text_color=C("faint")).pack(anchor="w",padx=8,pady=(0,10))
+        self.nav_buttons=[]
+        for label,callback,active in [
+            ("Tracking details",self.show_tracking_details,True),
+            ("Export last session",self.export_last_session,False),
+            ("Check for updates",self.check_updates,False),
+            ("Save diagnostics",self.save_diagnostics,False)]:
+            btn=self._button(nav,label,callback,anchor="w")
+            btn.configure(fg_color=C("accentWeak") if active else C("surface"),
+                border_color=C("accent") if active else C("surface"),
+                text_color=C("ink") if active else C("muted"),height=38)
+            btn.pack(fill="x",pady=3)
+            self.nav_buttons.append(btn)
+        profile=ctk.CTkFrame(sidebar,fg_color="transparent")
+        profile.grid(row=3,column=0,sticky="ew",padx=14,pady=18)
+        ctk.CTkFrame(profile,height=1,fg_color=C("border")).pack(fill="x",pady=(0,16))
+        userrow=ctk.CTkFrame(profile,fg_color="transparent")
+        userrow.pack(fill="x")
+        initial=(self.user.email or "").strip()[:1].upper() or "?"
+        ctk.CTkLabel(userrow,text=initial,width=30,height=30,corner_radius=8,
+            fg_color=C("accentWeak"),text_color=C("accent"),font=font(14,"bold")).pack(side="left",padx=(0,8))
+        ctk.CTkLabel(userrow,text="Signed in",font=font(12,"bold"),text_color=C("ink")).pack(side="left")
+        self.profile_email=ctk.CTkLabel(profile,text=self.user.email or "Unknown user",font=font(11),
+            text_color=C("muted"),wraplength=150,justify="left",anchor="w")
+        self.profile_email.pack(fill="x",pady=(8,14))
+        self.signout_btn=self._button(profile,"Sign out",self.logout)
+        self.signout_btn.pack(fill="x")
+        ctk.CTkLabel(profile,text=f"DESKTOP  /  {VERSION}",font=font(9),text_color=C("faint")).pack(anchor="w",pady=(12,0))
 
-        # Thin right border (a 1px column so the surface reads as a panel)
-        border = ctk.CTkFrame(parent, width=1, corner_radius=0, fg_color=C("border"))
-        border.grid(row=0, column=0, sticky="nse")
-
-        # --- Brand / logo row ---
-        brand = ctk.CTkFrame(sidebar, fg_color="transparent")
-        brand.grid(row=0, column=0, sticky="ew", padx=20, pady=(24, 18))
-
-        glyph = ctk.CTkFrame(
-            brand, width=40, height=40, corner_radius=12, fg_color=C("accent")
-        )
-        glyph.pack(side="left", padx=(0, 12))
-        glyph.pack_propagate(False)
-        ctk.CTkLabel(
-            glyph, text="D", font=font(20, "bold"), text_color=C("accentInk")
-        ).place(relx=0.5, rely=0.5, anchor="center")
-
-        brand_text = ctk.CTkFrame(brand, fg_color="transparent")
-        brand_text.pack(side="left")
-        ctk.CTkLabel(
-            brand_text, text="DevTrack", font=font(16, "bold"), text_color=C("ink")
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            brand_text, text="Activity Tracker", font=font(11), text_color=C("muted")
-        ).pack(anchor="w")
-
-        # --- Workspace nav ---
-        nav = ctk.CTkFrame(sidebar, fg_color="transparent")
-        nav.grid(row=1, column=0, sticky="ew", padx=14, pady=(6, 0))
-
-        ctk.CTkLabel(
-            nav, text="WORKSPACE", font=font(10, "bold"), text_color=C("faint")
-        ).pack(anchor="w", padx=8, pady=(0, 8))
-
-        nav_items = [
-            ("Tracking details", self.show_tracking_details),
-            ("Export last session", self.export_last_session),
-            ("Check for updates", self.check_updates),
-            ("Save diagnostics", self.save_diagnostics),
-        ]
-        for label, command in nav_items:
-            is_active = False
-            btn = ctk.CTkButton(
-                nav,
-                text=label,
-                anchor="w",
-                height=38,
-                corner_radius=9,
-                font=font(13, "bold" if is_active else "normal"),
-                command=command,
-                fg_color=C("accentWeak") if is_active else "transparent",
-                hover_color=C("surface2"),
-                text_color=C("accent") if is_active else C("muted"),
-            )
-            btn.pack(fill="x", pady=2)
-
-        # --- Profile block (pinned to the bottom) ---
-        profile = ctk.CTkFrame(sidebar, fg_color="transparent")
-        profile.grid(row=3, column=0, sticky="ew", padx=16, pady=16)
-
-        user_row = ctk.CTkFrame(profile, fg_color="transparent")
-        user_row.pack(fill="x", pady=(0, 12))
-
-        avatar = ctk.CTkFrame(
-            user_row, width=40, height=40, corner_radius=20, fg_color=C("accent")
-        )
-        avatar.pack(side="left", padx=(0, 12))
-        avatar.pack_propagate(False)
-        # Guard against an empty/None email — email[0] would raise IndexError.
-        avatar_initial = (self.user.email or "").strip()[:1].upper() or "?"
-        ctk.CTkLabel(
-            avatar, text=avatar_initial, font=font(16, "bold"),
-            text_color=C("accentInk"),
-        ).place(relx=0.5, rely=0.5, anchor="center")
-
-        details = ctk.CTkFrame(user_row, fg_color="transparent")
-        details.pack(side="left", fill="x", expand=True)
-        ctk.CTkLabel(
-            details, text="Signed in", font=font(12, "bold"), text_color=C("ink")
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            details, text=self.user.email or "Unknown user",
-            font=font(11), text_color=C("muted"),
-        ).pack(anchor="w")
-
-        signout_btn = ctk.CTkButton(
-            profile,
-            text="Sign Out",
-            command=self.logout,
-            height=38,
-            corner_radius=9,
-            font=font(12, "bold"),
-            fg_color=C("stopWeak"),
-            hover_color=C("stop"),
-            text_color=C("stop"),
-        )
-        signout_btn.pack(fill="x")
+    def _section(self,row,title=None):
+        card=Card(self.main,radius=12)
+        card.grid(row=row,column=0,sticky="ew",padx=16,pady=(0,12))
+        inner=ctk.CTkFrame(card,fg_color="transparent")
+        inner.pack(fill="x",padx=16,pady=14)
+        if title:
+            ctk.CTkLabel(inner,text=title,font=font(12,"bold"),text_color=C("ink"),anchor="w").pack(fill="x",pady=(0,10))
+        return inner
 
     def _setup_timer_section(self):
-        """Main scrollable area: greeting, session card, stat tiles, and panels."""
-        # ---------- 1) Top row: greeting + status pill ----------
-        top = ctk.CTkFrame(self.main, fg_color="transparent")
-        top.grid(row=0, column=0, sticky="ew", padx=28, pady=(24, 8))
-        top.grid_columnconfigure(0, weight=1)
+        from login_design import face
+        top=ctk.CTkFrame(self.main,fg_color="transparent")
+        top.grid(row=0,column=0,sticky="ew",padx=16,pady=(18,14))
+        top.grid_columnconfigure(0,weight=1)
+        ctk.CTkLabel(top,text="Your tracking session",font=face(22,True,True),
+            text_color=C("ink"),anchor="w").grid(row=0,column=0,sticky="w")
+        self.status_pill=Pill(top,"Idle",tone="idle")
+        self.status_pill.grid(row=0,column=1,sticky="e",padx=(10,0))
+        body=self._section(1)
+        ctk.CTkLabel(body,text="CURRENT SESSION",font=font(10,"bold"),text_color=C("faint"),height=18).pack(anchor="w")
+        head=ctk.CTkFrame(body,fg_color="transparent")
+        head.pack(fill="x",pady=(2,8))
+        self.radial_timer=BigTimer(head)
+        self.radial_timer.pack(side="left",anchor="w")
+        self.ring=ActivityRing(head,size=90)
+        self.ring.pack(side="right",padx=(12,0))
+        meta=ctk.CTkFrame(body,fg_color="transparent")
+        meta.pack(fill="x",pady=(0,10))
+        meta.grid_columnconfigure((0,1),weight=1,uniform="meta")
+        self.current_app_label=self._meta_block(meta,"Current app","—",0)
+        self.session_total_label=self._meta_block(meta,"Tracked this session","0h 0m",1)
+        self.status_label=ctk.CTkLabel(body,text="Ready to track your productivity",font=font(12),
+            text_color=C("muted"),anchor="w",justify="left",wraplength=400,height=22)
+        self.status_label.pack(fill="x",pady=(0,10))
+        controls=ctk.CTkFrame(body,fg_color="transparent")
+        controls.pack(fill="x")
+        controls.grid_columnconfigure((0,1,2),weight=1,uniform="controls")
+        self.start_btn=self._button(controls,"Start",self.start_timer,"active")
+        self.pause_btn=self._button(controls,"Pause",self.pause_timer,"idle",state="disabled")
+        self.stop_btn=self._button(controls,"Stop",self.stop_timer,"stop",state="disabled")
+        for i,b in enumerate((self.start_btn,self.pause_btn,self.stop_btn)):
+            b.configure(height=38)
+            b.grid(row=0,column=i,sticky="ew",padx=(0 if i==0 else 4,0 if i==2 else 4))
 
-        greet = ctk.CTkFrame(top, fg_color="transparent")
-        greet.grid(row=0, column=0, sticky="w")
-        ctk.CTkLabel(
-            greet, text="Your tracking session", font=font(24, "bold"), text_color=C("ink")
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            greet, text="Review your current session and capture status.",
-            font=font(13), text_color=C("muted"),
-        ).pack(anchor="w", pady=(2, 0))
+        work=self._section(2)
+        heading=ctk.CTkFrame(work,fg_color="transparent")
+        heading.pack(fill="x",pady=(0,8))
+        ctk.CTkLabel(heading,text="Project & task",font=font(12,"bold"),text_color=C("ink")).pack(side="left")
+        self.work_retry_btn=self._button(heading,"Refresh projects",self._load_work_options)
+        self.work_retry_btn.configure(height=28)
+        self.work_retry_btn.pack(side="right")
+        self._work_generation=0
+        self._work_locked=False
+        self._work_loading=False
+        self._work_identity=supabase_session.tracking_context()
+        self._projects={"General tracking":None}
+        self._tasks={"No task":None}
+        self._work_tasks=[]
+        selectrow=ctk.CTkFrame(work,fg_color="transparent")
+        selectrow.pack(fill="x")
+        selectrow.grid_columnconfigure((0,1),weight=1,uniform="selectors")
+        selectstyle=dict(height=34,corner_radius=8,font=font(12),fg_color=C("bg"),
+            button_color=C("surface2"),button_hover_color=C("border"),text_color=C("ink"),
+            text_color_disabled=C("faint"),dropdown_fg_color=C("surface"),dropdown_hover_color=C("surface2"),
+            dropdown_text_color=C("ink"),dropdown_font=font(12),dynamic_resizing=False,width=150)
+        self.project_select=ctk.CTkOptionMenu(selectrow,values=list(self._projects),command=self._on_project_changed,**selectstyle)
+        self.task_select=ctk.CTkOptionMenu(selectrow,values=list(self._tasks),state="disabled",**selectstyle)
+        for i,(caption,select) in enumerate((("Project",self.project_select),("Task",self.task_select))):
+            ctk.CTkLabel(selectrow,text=caption,font=font(11),text_color=C("muted"),anchor="w").grid(row=0,column=i,sticky="w",pady=(0,4))
+            select.grid(row=1,column=i,sticky="ew",padx=(0,4) if i==0 else (4,0))
+        self.work_status_label=ctk.CTkLabel(work,text="Loading assigned work…",font=font(11),
+            text_color=C("muted"),anchor="w",justify="left",wraplength=400)
+        self.work_status_label.pack(fill="x",pady=(8,0))
 
-        self.status_pill = Pill(top, "Idle", tone="idle")
-        self.status_pill.grid(row=0, column=1, sticky="e")
+        tiles=ctk.CTkFrame(self.main,fg_color="transparent")
+        tiles.grid(row=3,column=0,sticky="ew",padx=16,pady=(0,12))
+        tiles.grid_columnconfigure((0,1,2,3),weight=1,uniform="tiles")
+        self.tile_activity=self._stat_tile(tiles,0,"","Activity level","0%","accent")
+        self.tile_keys=self._stat_tile(tiles,1,"","Keystrokes","0","accent")
+        self.tile_mouse=self._stat_tile(tiles,2,"","Mouse actions","0","accent")
+        self.tile_shots=self._stat_tile(tiles,3,"","Screenshots","0","accent")
+        panels=ctk.CTkFrame(self.main,fg_color="transparent")
+        panels.grid(row=4,column=0,sticky="ew",padx=16,pady=(0,12))
+        panels.grid_columnconfigure((0,1),weight=1,uniform="panels")
+        self.apps_panel=self._list_panel(panels,0,"Applications today")
+        self.sites_panel=self._list_panel(panels,1,"Websites today")
+        self._seed_rows(self.apps_panel,[])
+        self._seed_rows(self.sites_panel,[])
 
-        # ---------- 2) Session card ----------
-        # Single-column card so the controls always get the full width (at the
-        # compact 640px window a side-by-side timer+ring+buttons row would clip
-        # the Start/Pause/Stop buttons).
-        session = Card(self.main)
-        session.grid(row=1, column=0, sticky="ew", padx=24, pady=(16, 12))
-        session.grid_columnconfigure(0, weight=1)
+        sync=self._section(5,"Capture & synchronization")
+        self._last_sync_status_refresh=0.0
+        self._last_screenshot_status_refresh=0.0
+        sync_fields=[('sync_status_label','Session sync: checking local queue'),
+            ('screenshot_sync_label','Screenshot sync starts with tracking'),
+            ('activity_sync_label','App/site sync starts with tracking'),
+            ('input_sync_label','Keyboard/mouse sync starts with tracking'),
+            ('screenshot_policy_label','Screenshot policy is checked when tracking starts. Pause stops all tracking.')]
+        self._wrap_labels=[self.status_label,self.work_status_label]
+        for attr,text in sync_fields:
+            label=ctk.CTkLabel(sync,text=text,font=font(11),text_color=C("muted"),
+                anchor="w",justify="left",wraplength=400)
+            label.pack(fill="x",pady=3)
+            setattr(self,attr,label)
+            self._wrap_labels.append(label)
+        breaks=self._section(6,"Breaks & idle reminders")
+        self.break_status_label=ctk.CTkLabel(breaks,text="Breaks: 0 · 00:00:00 excluded from tracked time",
+            font=font(11),text_color=C("muted"),anchor="w",justify="left",wraplength=400)
+        self.break_status_label.pack(fill="x")
+        self.idle_status_label=ctk.CTkLabel(breaks,text="Idle reminder is checked when tracking starts.",
+            font=font(11),text_color=C("muted"),anchor="w",justify="left",wraplength=400)
+        self.idle_status_label.pack(fill="x",pady=(6,10))
+        self._wrap_labels.extend((self.break_status_label,self.idle_status_label))
+        actions=ctk.CTkFrame(breaks,fg_color="transparent")
+        actions.pack(fill="x")
+        actions.grid_columnconfigure((0,1),weight=1,uniform="idle-actions")
+        self.idle_continue_btn=self._button(actions,"Continue tracking",self._dismiss_idle_reminder,"active",state="disabled")
+        self.idle_pause_btn=self._button(actions,"Pause tracking",self.pause_timer,"idle",state="disabled")
+        self.idle_continue_btn.grid(row=0,column=0,sticky="ew",padx=(0,4))
+        self.idle_pause_btn.grid(row=0,column=1,sticky="ew",padx=(4,0))
+        self._last_wrap_width=None
+        def resize(event):
+            width=max(250,int(self.main.winfo_width()/self.main._get_widget_scaling())-70)
+            if width==self._last_wrap_width:return
+            self._last_wrap_width=width
+            for label in self._wrap_labels:label.configure(wraplength=width)
+            self.current_app_label.configure(wraplength=max(100,width//2-14))
+        self.main.bind("<Configure>",resize,add="+")
 
-        body = ctk.CTkFrame(session, fg_color="transparent")
-        body.pack(fill="x", padx=22, pady=22)
+    def _meta_block(self,parent,caption,value,col=0):
+        block=ctk.CTkFrame(parent,fg_color="transparent")
+        block.grid(row=0,column=col,sticky="ew",padx=(0,8))
+        ctk.CTkLabel(block,text=caption,font=font(10),text_color=C("muted"),anchor="w",height=18).pack(fill="x")
+        label=ctk.CTkLabel(block,text=value,font=font(12,"bold"),text_color=C("ink"),
+                         anchor="w",justify="left",wraplength=180,height=24)
+        label.pack(fill="x")
+        return label
 
-        ctk.CTkLabel(
-            body, text="CURRENT SESSION", font=font(11, "bold"),
-            text_color=C("faint"),
-        ).pack(anchor="w")
-
-        # Top row: big timer (left) + a compact activity ring (right).
-        headrow = ctk.CTkFrame(body, fg_color="transparent")
-        headrow.pack(fill="x", pady=(6, 12))
-
-        tcol = ctk.CTkFrame(headrow, fg_color="transparent")
-        tcol.pack(side="left", fill="x", expand=True, anchor="w")
-
-        self.radial_timer = BigTimer(tcol)
-        self.radial_timer.pack(anchor="w")
-
-        meta = ctk.CTkFrame(tcol, fg_color="transparent")
-        meta.pack(anchor="w", fill="x", pady=(12, 0))
-        self.current_app_label = self._meta_block(meta, "Current app", "—")
-        self.session_total_label = self._meta_block(meta, "Tracked this session", "0h 0m")
-
-        self.ring = ActivityRing(headrow, size=118)
-        self.ring.pack(side="right", anchor="ne", padx=(12, 0))
-
-        # Secondary status line (configured by the preserved handlers)
-        self.status_label = ctk.CTkLabel(
-            body, text="Ready to track your productivity",
-            font=font(13), text_color=C("muted"),
-        )
-        self.status_label.pack(anchor="w", pady=(4, 4))
-        self.sync_status_label = ctk.CTkLabel(
-            body, text="Session sync: checking local queue",
-            font=font(12), text_color=C("muted"), wraplength=420,
-        )
-        self.sync_status_label.pack(anchor="w", pady=(0, 14))
-        self._last_sync_status_refresh = 0.0
-        self.screenshot_sync_label = ctk.CTkLabel(
-            body, text="Screenshot sync starts with tracking",
-            font=font(12), text_color=C("muted"), wraplength=420,
-        )
-        self.screenshot_sync_label.pack(anchor="w", pady=(0, 10))
-        self._last_screenshot_status_refresh = 0.0
-        self.screenshot_policy_label = ctk.CTkLabel(
-            body, text="Screenshot policy is checked when tracking starts. Pause stops all tracking.",
-            font=font(12), text_color=C("muted"), wraplength=420,
-        )
-        self.screenshot_policy_label.pack(anchor="w", pady=(0, 10))
-
-        self.break_status_label = ctk.CTkLabel(body, text="Breaks: 0 · 00:00:00 excluded from tracked time",
-            font=font(12), text_color=C("muted"), wraplength=420)
-        self.break_status_label.pack(anchor="w", pady=(0, 10))
-
-        self.idle_status_label = ctk.CTkLabel(body, text="Idle reminder is checked when tracking starts.",
-            font=font(12), text_color=C("muted"), wraplength=420)
-        self.idle_status_label.pack(anchor="w", pady=(0, 4))
-        idle_actions = ctk.CTkFrame(body, fg_color="transparent")
-        idle_actions.pack(anchor="w", pady=(0, 10))
-        self.idle_continue_btn = ctk.CTkButton(idle_actions, text="Continue tracking", height=26,
-            state="disabled", command=self._dismiss_idle_reminder)
-        self.idle_continue_btn.pack(side="left", padx=(0, 6))
-        self.idle_pause_btn = ctk.CTkButton(idle_actions, text="Pause tracking", height=26,
-            state="disabled", command=self.pause_timer)
-        self.idle_pause_btn.pack(side="left")
-
-        self.activity_sync_label = ctk.CTkLabel(body, text="App/site sync starts with tracking",
-            font=font(12), text_color=C("muted"), wraplength=420)
-        self.activity_sync_label.pack(anchor="w", pady=(0, 10))
-        self.input_sync_label = ctk.CTkLabel(body, text="Keyboard/mouse sync starts with tracking",
-            font=("Segoe UI", 11), text_color=C("muted"), wraplength=330, justify="left")
-        self.input_sync_label.pack(anchor="w", pady=(0, 10))
-
-        self._work_generation = 0
-        self._work_locked = False
-        self._work_loading = False
-        self._work_identity = supabase_session.tracking_context()
-        self._projects = {"General tracking": None}
-        self._tasks = {"No task": None}
-        self._work_tasks = []
-        ctk.CTkLabel(body, text="Project / task (optional)", font=font(12),
-                     text_color=C("muted")).pack(anchor="w")
-        self.project_select = ctk.CTkOptionMenu(
-            body, values=list(self._projects), command=self._on_project_changed)
-        self.project_select.pack(fill="x", pady=(4, 4))
-        self.task_select = ctk.CTkOptionMenu(body, values=list(self._tasks), state="disabled")
-        self.task_select.pack(fill="x", pady=(0, 4))
-        self.work_status_label = ctk.CTkLabel(body, text="Loading assigned work…",
-            font=font(12), text_color=C("muted"), wraplength=420)
-        self.work_status_label.pack(anchor="w")
-        self.work_retry_btn = ctk.CTkButton(body, text="Refresh projects", height=26,
-                                           command=self._load_work_options)
-        self.work_retry_btn.pack(anchor="w", pady=(0, 12))
-
-        # Controls row — full body width.
-        controls = ctk.CTkFrame(body, fg_color="transparent")
-        controls.pack(anchor="w", fill="x")
-
-        btn_config = {"height": 42, "corner_radius": 10, "width": 116,
-                      "font": font(13, "bold")}
-
-        self.start_btn = ctk.CTkButton(
-            controls, text="▶ Start", command=self.start_timer,
-            fg_color=C("active"), hover_color=C("accentHover"),
-            text_color=C("accentInk"), **btn_config,
-        )
-        self.start_btn.pack(side="left", padx=(0, 8))
-
-        self.pause_btn = ctk.CTkButton(
-            controls, text="⏸ Pause", command=self.pause_timer,
-            fg_color=C("idle"), hover_color=C("idle"),
-            text_color=C("accentInk"), state="disabled", **btn_config,
-        )
-        self.pause_btn.pack(side="left", padx=(0, 8))
-
-        self.stop_btn = ctk.CTkButton(
-            controls, text="⏹ Stop", command=self.stop_timer,
-            fg_color=C("stop"), hover_color=C("stopHover"),
-            text_color=C("accentInk"), state="disabled", **btn_config,
-        )
-        self.stop_btn.pack(side="left")
-
-        # ---------- 3) Stat tiles (4-up) ----------
-        tiles = ctk.CTkFrame(self.main, fg_color="transparent")
-        tiles.grid(row=2, column=0, sticky="ew", padx=28, pady=(4, 12))
-        for i in range(4):
-            tiles.grid_columnconfigure(i, weight=1, uniform="tiles")
-
-        self.tile_activity = self._stat_tile(
-            tiles, 0, "◆", "Activity level", "0%", "accent")
-        self.tile_keys = self._stat_tile(
-            tiles, 1, "⌨", "Keystrokes", "0", "active")
-        self.tile_mouse = self._stat_tile(
-            tiles, 2, "◎", "Mouse actions", "0", "idle")
-        self.tile_shots = self._stat_tile(
-            tiles, 3, "▣", "Screenshots", "0", "accent")
-
-        # ---------- 4) Two side-by-side panels ----------
-        panels = ctk.CTkFrame(self.main, fg_color="transparent")
-        panels.grid(row=3, column=0, sticky="ew", padx=28, pady=(4, 28))
-        panels.grid_columnconfigure(0, weight=1, uniform="panels")
-        panels.grid_columnconfigure(1, weight=1, uniform="panels")
-
-        self.apps_panel = self._list_panel(panels, 0, "Applications today")
-        self.sites_panel = self._list_panel(panels, 1, "Websites today")
-
-        # Real activity populates these panels after tracking begins.
-        self._seed_rows(self.apps_panel, [])
-        self._seed_rows(self.sites_panel, [])
-
-    # ---- small UI helpers ----
-    def _meta_block(self, parent, caption, value):
-        block = ctk.CTkFrame(parent, fg_color="transparent")
-        block.pack(side="left", padx=(0, 28))
-        value_label = ctk.CTkLabel(
-            block, text=value, font=font(15, "bold"), text_color=C("ink")
-        )
-        value_label.pack(anchor="w")
-        ctk.CTkLabel(
-            block, text=caption, font=font(11), text_color=C("muted")
-        ).pack(anchor="w")
-        return value_label
-
-    def _stat_tile(self, parent, col, icon, caption, value, tone):
-        card = Card(parent)
-        card.grid(row=0, column=col, sticky="nsew",
-                  padx=(0 if col == 0 else 6, 0 if col == 3 else 6))
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=16, pady=16)
-
-        icon_block = ctk.CTkFrame(
-            inner, width=34, height=34, corner_radius=9, fg_color=C(tone + "Weak")
-        )
-        icon_block.pack(anchor="w")
-        icon_block.pack_propagate(False)
-        ctk.CTkLabel(
-            icon_block, text=icon, font=font(15, "bold"), text_color=C(tone)
-        ).place(relx=0.5, rely=0.5, anchor="center")
-
-        number = ctk.CTkLabel(
-            inner, text=value, font=font(26, "bold"), text_color=C("ink")
-        )
-        number.pack(anchor="w", pady=(12, 0))
-        ctk.CTkLabel(
-            inner, text=caption, font=font(12), text_color=C("muted")
-        ).pack(anchor="w", pady=(0, 10))
-
-        bar = ctk.CTkProgressBar(
-            inner, height=6, corner_radius=999,
-            fg_color=C("surface3"), progress_color=C(tone),
-        )
-        bar.set(0)
-        bar.pack(fill="x")
+    def _stat_tile(self,parent,col,icon,caption,value,tone):
+        card=Card(parent,radius=10)
+        card.grid(row=0,column=col,sticky="nsew",padx=(0 if col==0 else 4,0 if col==3 else 4))
+        inner=ctk.CTkFrame(card,fg_color="transparent")
+        inner.pack(fill="both",expand=True,padx=10,pady=12)
+        value_row=ctk.CTkFrame(inner,fg_color="transparent")
+        value_row.pack(fill="x")
+        icon_image=metric_icon(col)
+        icon_label=ctk.CTkLabel(value_row,text="",image=icon_image,width=18)
+        icon_label.pack(side="right")
+        number=ctk.CTkLabel(value_row,text=value,font=font(23,"bold"),text_color=C("ink"),anchor="w")
+        number.pack(side="left")
+        ctk.CTkLabel(inner,text=caption,font=font(10),text_color=C("muted"),anchor="w").pack(fill="x",pady=(2,0))
         return number
 
-    def _list_panel(self, parent, col, title):
-        card = Card(parent)
-        card.grid(row=0, column=col, sticky="nsew",
-                  padx=(0 if col == 0 else 6, 0 if col == 1 else 6))
-        ctk.CTkLabel(
-            card, text=title, font=font(14, "bold"), text_color=C("ink")
-        ).pack(anchor="w", padx=20, pady=(18, 10))
-        container = ctk.CTkFrame(card, fg_color="transparent")
-        container.pack(fill="both", expand=True, padx=20, pady=(0, 18))
+    def _list_panel(self,parent,col,title):
+        card=Card(parent,radius=10)
+        card.grid(row=0,column=col,sticky="nsew",padx=(0,5) if col==0 else (5,0))
+        ctk.CTkLabel(card,text=title,font=font(12,"bold"),text_color=C("ink"),anchor="w").pack(fill="x",padx=12,pady=(12,8))
+        container=ctk.CTkFrame(card,fg_color="transparent")
+        container.pack(fill="both",expand=True,padx=12,pady=(0,12))
         return container
 
-    def _seed_rows(self, container, rows):
-        # Clear existing children, then draw the supplied rows.
-        for child in container.winfo_children():
-            child.destroy()
+    def _seed_rows(self,container,rows):
+        for child in container.winfo_children():child.destroy()
         if not rows:
-            ctk.CTkLabel(
-                container, text="No activity yet", font=font(12),
-                text_color=C("muted"),
-            ).pack(anchor="w", pady=6)
+            ctk.CTkLabel(container,text="No activity yet",font=font(11),text_color=C("muted"),anchor="w").pack(fill="x",pady=(0,2))
             return
-        for name, frac, duration in rows:
-            row = ctk.CTkFrame(container, fg_color="transparent")
-            row.pack(fill="x", pady=5)
-            row.grid_columnconfigure(1, weight=1)
-            ctk.CTkLabel(
-                row, text=str(name), font=font(12, "bold"),
-                text_color=C("ink"), width=120, anchor="w",
-            ).grid(row=0, column=0, sticky="w", padx=(0, 10))
-            bar = ctk.CTkProgressBar(
-                row, height=6, corner_radius=999,
-                fg_color=C("surface3"), progress_color=C("accent"),
-            )
-            bar.set(max(0.0, min(1.0, float(frac))))
-            bar.grid(row=0, column=1, sticky="ew", padx=(0, 10))
-            ctk.CTkLabel(
-                row, text=str(duration), font=font(11),
-                text_color=C("muted"), width=56, anchor="e",
-            ).grid(row=0, column=2, sticky="e")
+        for name,frac,duration in rows:
+            row=ctk.CTkFrame(container,fg_color="transparent")
+            row.pack(fill="x",pady=(0,9))
+            row.grid_columnconfigure(0,weight=1)
+            label=ctk.CTkLabel(row,text=str(name),font=font(11),text_color=C("ink"),
+                             anchor="w",justify="left",wraplength=120)
+            label.grid(row=0,column=0,sticky="w",padx=(0,8))
+            ctk.CTkLabel(row,text=str(duration),font=font(10),text_color=C("muted"),anchor="e").grid(row=0,column=1,sticky="e")
+            bar=ctk.CTkProgressBar(row,height=4,corner_radius=2,fg_color=C("surface3"),progress_color=C("accent"),width=80)
+            bar.set(max(0.0,min(1.0,float(frac))))
+            bar.grid(row=1,column=0,columnspan=2,sticky="ew",pady=(5,0))
 
     # ------------------------------------------------------------------
     #  Timer Control (Thread‑Safe, Non‑Blocking) - UNCHANGED LOGIC
@@ -605,11 +464,11 @@ class DashboardWindow:
     def pause_timer(self):
         self.pause_btn.configure(state="disabled")
         self.start_btn.configure(
-            text="▶ Resume",
+            text="Resume",
             state="normal",
             command=self.resume_timer,
             fg_color=Colors.ACCENT_BLUE,
-            hover_color="#1D4ED8"
+            hover_color=C("accentHover")
         )
         self.status_label.configure(text="Pausing...", text_color=Colors.ACCENT_ORANGE)
         self.app.update_idletasks()
@@ -659,13 +518,13 @@ class DashboardWindow:
                         if not self._alive or not self._dash_root.winfo_exists():
                             return
                         self.start_btn.configure(
-                            text="▶ Start",
+                            text="Start",
                             state="disabled",
                             command=self.start_timer,
                             fg_color=Colors.ACCENT_GREEN,
-                            hover_color="#047857"
+                            hover_color=C("activeHover")
                         )
-                        self.pause_btn.configure(state="normal", text="⏸ Pause", command=self.pause_timer)
+                        self.pause_btn.configure(state="normal", text="Pause", command=self.pause_timer)
                         self.status_label.configure(text="● Tracking Active", text_color=Colors.ACCENT_GREEN)
                     try:
                         self.app.after(0, _ok)
@@ -735,13 +594,13 @@ class DashboardWindow:
             return
         self._set_work_controls(False)
         self.start_btn.configure(
-            text="▶ Start",
+            text="Start",
             state="normal",
             command=self.start_timer,
             fg_color=Colors.ACCENT_GREEN,
-            hover_color="#047857"
+            hover_color=C("activeHover")
         )
-        self.pause_btn.configure(state="disabled", text="⏸ Pause", command=self.pause_timer)
+        self.pause_btn.configure(state="disabled", text="Pause", command=self.pause_timer)
         self.stop_btn.configure(state="disabled")
         self.radial_timer.reset()
         self.status_label.configure(
@@ -761,13 +620,13 @@ class DashboardWindow:
             return
         self._set_work_controls(False)
         self.start_btn.configure(
-            text="▶ Start",
+            text="Start",
             state="normal",
             command=self.start_timer,
             fg_color=Colors.ACCENT_GREEN,
-            hover_color="#047857"
+            hover_color=C("activeHover")
         )
-        self.pause_btn.configure(state="disabled", text="⏸ Pause", command=self.pause_timer)
+        self.pause_btn.configure(state="disabled", text="Pause", command=self.pause_timer)
         self.stop_btn.configure(state="disabled")
         self.status_label.configure(text=f"Error: {msg}", text_color=Colors.ACCENT_RED)
 

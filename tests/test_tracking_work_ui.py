@@ -27,7 +27,7 @@ class WorkUiTests(unittest.TestCase):
         names = {'_set_work_controls', '_clear_work_options', '_on_project_changed',
                  '_load_work_options', 'start_timer', '_reset_buttons_on_error', '_on_session_stopped'}
         cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
-        namespace = {'supabase_session': SimpleNamespace(tracking_context=lambda: self.identity),
+        namespace = {'C': lambda token: token, 'supabase_session': SimpleNamespace(tracking_context=lambda: self.identity),
                      'threading': SimpleNamespace(Thread=lambda target, **kw: SimpleNamespace(start=lambda: self.jobs.append(target))),
                      'Colors': SimpleNamespace(ACCENT_ORANGE='orange', ACCENT_GREEN='green', ACCENT_RED='red'),
                      'messagebox': Mock()}

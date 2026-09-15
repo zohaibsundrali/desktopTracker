@@ -8,7 +8,7 @@ old flat colour names to the new tokens so existing handlers keep working.
 import tkinter as tk
 import customtkinter as ctk
 
-FAMILY = "Segoe UI"   # system UI face on Windows; falls back gracefully elsewhere
+FAMILY = "Inter"   # system UI face on Windows; falls back gracefully elsewhere
 
 # ---- Design tokens: (light, dark) --------------------------------------------
 COLORS = {
@@ -32,6 +32,21 @@ COLORS = {
     "stopHover":   ("#D13B40", "#E5555C"),
     "stopWeak":    ("#FCE9EA", "#2E1618"),
 }
+
+# Website dark tokens, shared with the redesigned login. Keep legacy light tokens
+# available for callers, while Verisade desktop windows explicitly select dark.
+from login_design import BG, CARD, BORDER, PRIMARY, PRIMARY_INK, HOVER, SECONDARY, QUIET, hsl
+_dark = {
+    "bg": BG, "surface": CARD, "surface2": hsl(200,20,18), "surface3": BORDER,
+    "ink": "#FFFFFF", "muted": SECONDARY, "faint": QUIET, "border": BORDER,
+    "accent": PRIMARY, "accentHover": HOVER, "accentInk": PRIMARY_INK,
+    "accentWeak": "#24233D", "active": hsl(142,65,48), "activeWeak": "#152F24",
+    "activeHover": hsl(142,65,56), "idle": hsl(38,92,55), "idleWeak": "#332B1C",
+    "idleHover": hsl(38,92,63), "stop": hsl(0,72,55), "stopHover": hsl(0,72,63),
+    "stopWeak": "#351F24",
+}
+for _name, _value in _dark.items():
+    COLORS[_name] = (COLORS.get(_name, (_value, _value))[0], _value)
 
 
 def C(name: str):
@@ -101,7 +116,7 @@ class BigTimer(ctk.CTkLabel):
     """Large tabular elapsed-time label. Drop-in for the old RadialTimerWidget:
     exposes update_progress(seconds) and reset()."""
     def __init__(self, master, **kw):
-        super().__init__(master, text="00:00:00", font=font(52, "bold"),
+        super().__init__(master, text="00:00:00", font=ctk.CTkFont(family="Space Grotesk", size=42, weight="bold"),
                          text_color=C("ink"), **kw)
 
     def update_progress(self, elapsed_seconds: float) -> None:
@@ -113,30 +128,63 @@ class BigTimer(ctk.CTkLabel):
 
 
 class ActivityRing(ctk.CTkFrame):
-    """Circular activity gauge drawn on a tk.Canvas (CTk has no conic gradient)."""
-    def __init__(self, master, size: int = 176, thickness: int = 16, **kw):
-        super().__init__(master, fg_color="transparent", **kw)
-        self.size, self.th, self._pct = size, thickness, 0.0
-        self.canvas = tk.Canvas(self, width=size, height=size,
-                                highlightthickness=0, bd=0)
-        self.canvas.pack()
-        self.val = ctk.CTkLabel(self, text="0%", font=font(30, "bold"),
-                                text_color=C("ink"), fg_color="transparent")
-        self.val.place(relx=0.5, rely=0.44, anchor="center")
-        self.sub = ctk.CTkLabel(self, text="ACTIVITY", font=font(10, "bold"),
-                                text_color=C("muted"), fg_color="transparent")
-        self.sub.place(relx=0.5, rely=0.60, anchor="center")
+    """Compact DPI-aware activity gauge with the existing set(percent) API."""
+    def __init__(self, master, size=118, thickness=6, **kw):
+        super().__init__(master, fg_color="transparent", width=size, **kw)
+        self._pct = 0.0
+        self.val=ctk.CTkLabel(self,text="0%",font=font(25,"bold"),text_color=C("ink"))
+        self.val.pack(anchor="e")
+        self.sub=ctk.CTkLabel(self,text="ACTIVITY",font=font(10,"bold"),text_color=C("muted"))
+        self.sub.pack(anchor="e",pady=(0,7))
+        self.bar=ctk.CTkProgressBar(self,width=size,height=thickness,corner_radius=3,
+                                   fg_color=C("surface3"),progress_color=C("accent"))
+        self.bar.pack(fill="x")
         self.set(0)
 
-    def set(self, pct: float) -> None:
-        self._pct = max(0.0, min(100.0, float(pct)))
-        self.canvas.configure(bg=hexof("surface"))
-        self.canvas.delete("all")
-        pad = self.th // 2 + 3
-        box = (pad, pad, self.size - pad, self.size - pad)
-        self.canvas.create_arc(*box, start=90, extent=-359.999, style="arc",
-                               width=self.th, outline=hexof("surface3"))
-        if self._pct > 0:
-            self.canvas.create_arc(*box, start=90, extent=-359.999 * (self._pct / 100),
-                                   style="arc", width=self.th, outline=hexof("accent"))
-        self.val.configure(text=f"{int(round(self._pct))}%", text_color=hexof("ink"))
+    def set(self,pct):
+        self._pct=max(0.0,min(100.0,float(pct)))
+        self.val.configure(text=f"{int(round(self._pct))}%")
+        self.bar.set(self._pct/100)
+
+class ActionButton(ctk.CTkButton):
+    """Status-colored actions with quiet disabled surfaces and readable labels."""
+    def __init__(self, master, tone=None, **kwargs):
+        self._action_tone=tone
+        self._enabled_fill=kwargs.get('fg_color')
+        super().__init__(master,**kwargs)
+        self.configure(state=self.cget('state'))
+
+    def configure(self, require_redraw=False, **kwargs):
+        if 'fg_color' in kwargs:
+            self._enabled_fill=kwargs['fg_color']
+        state=kwargs.get('state',self.cget('state'))
+        if self._action_tone and state=='disabled':
+            kwargs['fg_color']=C(self._action_tone+'Weak')
+            kwargs['border_color']=C(self._action_tone+'Weak')
+        elif 'state' in kwargs and self._action_tone:
+            kwargs['fg_color']=self._enabled_fill
+            kwargs['border_color']=self._enabled_fill
+        super().configure(require_redraw=require_redraw,**kwargs)
+
+
+def metric_icon(kind):
+    """Small monochrome line icons, rendered at high resolution for native DPI scaling."""
+    from PIL import Image, ImageDraw
+    image=Image.new('RGBA',(96,96))
+    d=ImageDraw.Draw(image)
+    color=hexof('accent')
+    def line(points):d.line([(x*4,y*4) for x,y in points],fill=color,width=6,joint='curve')
+    if kind==0:
+        line([(2,12),(7,12),(10,5),(14,19),(17,12),(22,12)])
+    elif kind==1:
+        d.rounded_rectangle((8,20,88,76),radius=8,outline=color,width=6)
+        for x in (6,10,14,18):line([(x,9),(x,10)])
+        line([(7,15),(17,15)])
+    elif kind==2:
+        d.rounded_rectangle((24,8,72,88),radius=22,outline=color,width=6)
+        line([(12,3),(12,10)])
+    else:
+        d.rounded_rectangle((8,12,88,76),radius=7,outline=color,width=6)
+        line([(8,22),(16,22)]);line([(12,19),(12,22)])
+    image=image.resize((48,48),Image.Resampling.LANCZOS)
+    return ctk.CTkImage(light_image=image,dark_image=image,size=(18,18))
