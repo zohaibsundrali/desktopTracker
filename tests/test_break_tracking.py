@@ -181,3 +181,22 @@ class BreakCoordinatorTests(unittest.TestCase):
         self.assertFalse(pausing.is_alive())
         self.assertEqual([r['status'] for r in rows],['periodic','paused'])
         self.assertEqual(len(rows[-1]['break_periods']),1)
+
+    def test_system_lock_creates_one_durable_break_without_auto_resume(self):
+        t=self.tracker
+        t._shutdown_event=threading.Event()
+        t.pause_for_system('Windows locked')
+        t.pause_for_system('Windows locked')
+        self.assertTrue(t.instant_timer.is_paused)
+        self.assertTrue(t._ctx.pause_ctrl.is_paused)
+        self.assertEqual(t.get_break_status()['count'],1)
+        self.assertEqual(t._persist_session.call_args.args[0]['status'],'paused')
+        self.assertTrue(t.resume())
+        self.assertIsNone(t.system_pause_reason)
+
+    def test_late_system_event_after_shutdown_cannot_change_session(self):
+        t=self.tracker
+        t._shutdown_event=threading.Event();t._shutdown_event.set()
+        t._persist_session.reset_mock()
+        t.pause_for_system('Windows locked')
+        t._persist_session.assert_not_called()

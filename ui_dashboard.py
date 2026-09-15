@@ -15,7 +15,8 @@ import time
 import supabase_session
 
 import customtkinter as ctk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
+from app_version import VERSION
 
 from timer_tracker import TimerTracker
 from sync_status import session_sync_text, screenshot_sync_text, screenshot_policy_text, break_status_text, idle_reminder_text, activity_sync_text, input_sync_text
@@ -39,6 +40,9 @@ class DashboardWindow:
         self.update_counter = 0
         self._timer_after_id = None
         self.ui_lock = threading.Lock()
+        self._support_busy = False
+        self._logging_out = False
+        self._exit_after_logout = False
         self._alive = True   # set False on sign-out so stale bg callbacks no-op
 
         self.timer = TimerTracker(user_id=user.id, user_email=user.email)
@@ -47,9 +51,9 @@ class DashboardWindow:
         # of opening a new Toplevel. A dedicated container frame holds all the
         # dashboard UI so sign-out can tear it down and restore the login view.
         self.app = self.login_window.app
-        self.app.title("Developer Productivity Tracker – Premium")
-        self.app.geometry("640x600")
-        self.app.minsize(540, 500)
+        self.app.title(f"DevTrack {VERSION}")
+        self.app.geometry("860x720")
+        self.app.minsize(760, 600)
         self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
         apply_appearance("light")
         self.app.configure(fg_color=C("bg"))
@@ -64,12 +68,16 @@ class DashboardWindow:
 
         try:
             self.setup_ui()
+            from windows_session_guard import WindowsSessionGuard
+            self._system_guard = WindowsSessionGuard(self.timer.pause_for_system)
             self._load_work_options()
             self.start_timer_update()
         except Exception:
             # If the UI failed to build, shut the tracker down so its non-daemon
             # anchor thread doesn't leak, then propagate to the caller.
             try:
+                if getattr(self, '_system_guard', None):
+                    self._system_guard.close()
                 self.timer.shutdown()
             except Exception:
                 pass
@@ -149,13 +157,13 @@ class DashboardWindow:
         ).pack(anchor="w", padx=8, pady=(0, 8))
 
         nav_items = [
-            ("Dashboard", True),
-            ("Activity", False),
-            ("Screenshots", False),
-            ("Apps & Sites", False),
-            ("Reports", False),
+            ("Tracking details", self.show_tracking_details),
+            ("Export last session", self.export_last_session),
+            ("Check for updates", self.check_updates),
+            ("Save diagnostics", self.save_diagnostics),
         ]
-        for label, is_active in nav_items:
+        for label, command in nav_items:
+            is_active = False
             btn = ctk.CTkButton(
                 nav,
                 text=label,
@@ -163,7 +171,7 @@ class DashboardWindow:
                 height=38,
                 corner_radius=9,
                 font=font(13, "bold" if is_active else "normal"),
-                command=lambda: None,
+                command=command,
                 fg_color=C("accentWeak") if is_active else "transparent",
                 hover_color=C("surface2"),
                 text_color=C("accent") if is_active else C("muted"),
@@ -222,10 +230,10 @@ class DashboardWindow:
         greet = ctk.CTkFrame(top, fg_color="transparent")
         greet.grid(row=0, column=0, sticky="w")
         ctk.CTkLabel(
-            greet, text="Good afternoon", font=font(24, "bold"), text_color=C("ink")
+            greet, text="Your tracking session", font=font(24, "bold"), text_color=C("ink")
         ).pack(anchor="w")
         ctk.CTkLabel(
-            greet, text="Here's your productivity at a glance today.",
+            greet, text="Review your current session and capture status.",
             font=font(13), text_color=C("muted"),
         ).pack(anchor="w", pady=(2, 0))
 
@@ -260,8 +268,8 @@ class DashboardWindow:
 
         meta = ctk.CTkFrame(tcol, fg_color="transparent")
         meta.pack(anchor="w", fill="x", pady=(12, 0))
-        self._meta_block(meta, "Current app", "—")
-        self._meta_block(meta, "Today total", "0h 0m")
+        self.current_app_label = self._meta_block(meta, "Current app", "—")
+        self.session_total_label = self._meta_block(meta, "Tracked this session", "0h 0m")
 
         self.ring = ActivityRing(headrow, size=118)
         self.ring.pack(side="right", anchor="ne", padx=(12, 0))
@@ -394,12 +402,14 @@ class DashboardWindow:
     def _meta_block(self, parent, caption, value):
         block = ctk.CTkFrame(parent, fg_color="transparent")
         block.pack(side="left", padx=(0, 28))
-        ctk.CTkLabel(
+        value_label = ctk.CTkLabel(
             block, text=value, font=font(15, "bold"), text_color=C("ink")
-        ).pack(anchor="w")
+        )
+        value_label.pack(anchor="w")
         ctk.CTkLabel(
             block, text=caption, font=font(11), text_color=C("muted")
         ).pack(anchor="w")
+        return value_label
 
     def _stat_tile(self, parent, col, icon, caption, value, tone):
         card = Card(parent)
@@ -545,6 +555,9 @@ class DashboardWindow:
         threading.Thread(target=load, daemon=True).start()
 
     def start_timer(self):
+        if getattr(self, '_system_guard', None) and not self._system_guard.available:
+            messagebox.showerror("Tracking unavailable", "Windows lock/sleep protection is not ready. Wait a moment, or restart DevTrack and save diagnostics if this continues.")
+            return
         if self._work_locked:
             return
         if self._work_identity != supabase_session.tracking_context():
@@ -631,6 +644,9 @@ class DashboardWindow:
         threading.Thread(target=_bg_pause, daemon=True).start()
 
     def resume_timer(self):
+        if getattr(self, '_system_guard', None) and not self._system_guard.available:
+            messagebox.showerror("Tracking unavailable", "Windows lock/sleep protection is not ready. Wait a moment, or restart DevTrack and save diagnostics if this continues.")
+            return
         self.pause_btn.configure(state="disabled")
         self.status_label.configure(text="Resuming...", text_color=Colors.ACCENT_BLUE)
         self.app.update_idletasks()
@@ -649,7 +665,7 @@ class DashboardWindow:
                             fg_color=Colors.ACCENT_GREEN,
                             hover_color="#047857"
                         )
-                        self.pause_btn.configure(state="normal")
+                        self.pause_btn.configure(state="normal", text="⏸ Pause", command=self.pause_timer)
                         self.status_label.configure(text="● Tracking Active", text_color=Colors.ACCENT_GREEN)
                     try:
                         self.app.after(0, _ok)
@@ -791,8 +807,13 @@ class DashboardWindow:
                 )
             if self.timer_running and self.app.winfo_exists():
                 status = self.timer.get_current_time()
+                if status.get('is_paused') and not self.timer_paused:
+                    self.timer_paused = True
+                    self.pause_btn.configure(text="Resume", command=self.resume_timer, state="normal")
+                    self.status_label.configure(text=(getattr(self.timer, 'system_pause_reason', None) or "Tracking paused") + ". Resume when ready.")
                 elapsed = status.get("elapsed_seconds", 0)
                 self.radial_timer.update_progress(elapsed)
+                self.session_total_label.configure(text=f"{int(elapsed)//3600}h {(int(elapsed)//60)%60}m")
 
                 self.update_counter += 1
 
@@ -961,6 +982,8 @@ class DashboardWindow:
             apps = live() if callable(live) else None
             if not apps:
                 return
+            foreground = monitor.get_summary().get('foreground_app')
+            self.current_app_label.configure(text=str(foreground or '—')[:30])
 
             durations = []
             for a in apps:
@@ -992,31 +1015,108 @@ class DashboardWindow:
     # ------------------------------------------------------------------
     #  Cleanup
     # ------------------------------------------------------------------
-    def logout(self):
+    def show_tracking_details(self):
+        from desktop_support import tracking_details
+        messagebox.showinfo("Tracking & privacy", tracking_details(self.timer))
+
+    def export_last_session(self):
+        if self.timer.is_finalizing:
+            messagebox.showinfo("Session report", "The session is still being saved. Try again shortly.")
+            return
+        report = self.timer.export_report_json()
+        if not report:
+            messagebox.showinfo("Session report", "Stop a session first to export its report. Historical reports are available in the web app.")
+            return
+        path = filedialog.asksaveasfilename(title="Export your last session", defaultextension=".json",
+            initialfile="devtrack-session.json", filetypes=[("JSON report", "*.json")])
+        if path:
+            from desktop_support import atomic_json
+            try:
+                atomic_json(path, report)
+                messagebox.showinfo("Session report", "Your session report was saved to the selected file.")
+            except (OSError, ValueError, TypeError):
+                messagebox.showerror("Session report", "The report could not be saved. Choose a writable location.")
+
+    def _support_job(self, title, work, finished):
+        if self._support_busy or not self._alive:
+            return
+        self._support_busy = True
+        def worker():
+            try:
+                value, error = work(), None
+            except Exception as exc:
+                from desktop_updates import UpdateError
+                value = None
+                error = str(exc) if isinstance(exc, UpdateError) else "The operation could not finish. Check your connection and available disk space."
+            def complete():
+                self._support_busy = False
+                if not self._alive:
+                    return
+                if error:
+                    messagebox.showerror(title, error)
+                else:
+                    finished(value)
+            try:
+                self.app.after(0, complete)
+            except RuntimeError:
+                pass
+        threading.Thread(target=worker, daemon=True, name="DesktopSupport").start()
+
+    def save_diagnostics(self):
+        path = filedialog.asksaveasfilename(title="Save setup diagnostics", defaultextension=".json",
+            initialfile="devtrack-diagnostics.json", filetypes=[("JSON report", "*.json")])
+        if not path:
+            return
+        from diagnostics import collect_report
+        from desktop_support import atomic_json
+        def work():
+            atomic_json(path, collect_report())
+        self._support_job("Setup diagnostics", work, lambda _: messagebox.showinfo(
+            "Setup diagnostics", "Saved an offline setup report. It contains no credentials, screenshots, window titles or account identity."))
+
+    def check_updates(self):
+        from desktop_updates import check_for_update, download_update
+        from config import user_data_dir
+        def finished(release):
+            if release is None:
+                messagebox.showinfo("Desktop updates", f"DevTrack {VERSION} is current for the stable release channel.")
+                return
+            if messagebox.askyesno("Desktop update", f"DevTrack {release.version} is available. Download the verified installer? Your current session will continue."):
+                self._support_job("Desktop update", lambda: download_update(release, user_data_dir()),
+                    lambda path: messagebox.showinfo("Update downloaded", f"Verified installer saved:\n{path}\n\nStop tracking and quit DevTrack before running it. Your local queues will be preserved."))
+        self._support_job("Desktop updates", check_for_update, finished)
+
+    def logout(self, exit_app=False):
+        if self._logging_out or not self._alive:
+            return
+        if self.timer_running and not messagebox.askyesno(
+                "Quit DevTrack" if exit_app else "Sign out",
+                "Stop and save this session, then " + ("quit?" if exit_app else "sign out?")):
+            return
+        # A cancelled prompt must leave the UI refresh and tracking untouched.
+        self._logging_out = True
+        self._exit_after_logout = exit_app
         self.stop_update_thread = True
         if self._timer_after_id:
             self.app.after_cancel(self._timer_after_id)
-        if self.timer_running:
-            if messagebox.askyesno("Logout", "Stop timer and logout?"):
-                self.status_label.configure(text="Stopping...", text_color=Colors.ACCENT_ORANGE)
-                self.start_btn.configure(state="disabled")
-                self.pause_btn.configure(state="disabled")
-                self.stop_btn.configure(state="disabled")
-                def _bg_logout_stop():
-                    try:
-                        self.timer.stop()
-                    finally:
-                        try:
-                            self.app.after(0, self._finish_logout)
-                        except RuntimeError:
-                            pass
-                threading.Thread(target=_bg_logout_stop, daemon=True).start()
-                return
-            else:
-                return
-        self._finish_logout()
+        self.status_label.configure(text="Saving session…", text_color=Colors.ACCENT_ORANGE)
+        self.start_btn.configure(state="disabled")
+        self.pause_btn.configure(state="disabled")
+        self.stop_btn.configure(state="disabled")
+        def save_and_close():
+            try:
+                self.timer.stop()
+                self.timer.shutdown()
+            finally:
+                try:
+                    self.app.after(0, self._finish_logout)
+                except RuntimeError:
+                    pass
+        threading.Thread(target=save_and_close, daemon=True, name="DesktopSaveAndClose").start()
 
     def _finish_logout(self):
+        if getattr(self, '_system_guard', None):
+            self._system_guard.close()
         self.auth.logout()
         self._alive = False
         self.stop_update_thread = True
@@ -1025,27 +1125,17 @@ class DashboardWindow:
                 self.app.after_cancel(self._timer_after_id)
             except Exception:
                 pass
-        # Shut the tracker down — stops its non-daemon anchor thread so it doesn't
-        # leak across re-logins or hang process exit — and drop the stale ref.
-        try:
-            self.timer.stop()
-            # Finalizer can wait for provider IO; release the UI immediately.
-            threading.Thread(target=self.timer.shutdown, daemon=True,
-                             name="DesktopTrackerShutdown").start()
-        except Exception:
-            pass
         self.login_window.dashboard = None
         # Tear down only the dashboard view; the shared window stays alive and
         # the login view is rebuilt inside it.
         self._dash_root.destroy()
-        self.login_window.return_to_login()
+        if self._exit_after_logout:
+            self.app.destroy()
+        else:
+            self.login_window.return_to_login()
 
     def on_closing(self):
-        # Closing the dashboard behaves like Sign Out: stop/save the session and
-        # return to the login window. Do NOT sys.exit here — that used to kill the
-        # background save thread mid-write (data loss) and ran even when the user
-        # answered "No" to the stop-and-logout prompt.
-        self.logout()
+        self.logout(exit_app=True)
 
     def run(self):
         # The dashboard shares the login window's root and its already-running

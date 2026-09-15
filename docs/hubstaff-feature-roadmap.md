@@ -55,3 +55,7 @@ Cumulative app/site snapshots now use an identity-scoped durable queue, revision
 ### Keyboard and mouse recovery slice
 
 Aggregate input batches now queue locally with stable capture IDs before upload, preserving existing window/percentage report semantics. Confirmation status is shown separately for keyboard and mouse. Local-save failures stop affected input capture, and retries remain bound to the original identity. This protects saved aggregate batches, not unsaved raw events before a crash. Apply migration `20260912093359_production_input_capture_receipts.sql` before desktop rollout; real Windows/provider tests remain required.
+
+### Windows 1.1.0 release candidate
+
+The desktop candidate consolidates packaging plus initial/five-second session checkpoints, OS-held single-instance protection, Windows lock/disconnect/suspend pause, corrected logout/quit/resume controls, working support/report actions, accurate session labels, versioned build manifests and publisher-verified update downloads. The signing pipeline is ready for a configured certificate; this testing candidate remains unsigned. Actual-project build configuration and installed-device acceptance are still external gates. See [the release candidate guide](desktop-release-candidate.md) for exact scope, update behavior and a single final test checklist.

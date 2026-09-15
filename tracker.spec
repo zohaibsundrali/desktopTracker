@@ -20,6 +20,14 @@ for pkg in ("customtkinter", "supabase", "pynput", "pyautogui", "PIL"):
 
 # Extra hidden imports some deps pull in dynamically.
 hiddenimports += [
+    "diagnostics",
+    "app_version",
+    "instance_lock",
+    "desktop_updates",
+    "desktop_support",
+    "windows_session_guard",
+    "win32ts",
+    "public_config",
     "session_outbox",
     "screenshot_outbox",
     "screenshot_upload",
@@ -65,11 +73,17 @@ try:
 except Exception:
     pass
 
-# ---- Bundle the runtime config so the app can reach Supabase -----------------
-# IMPORTANT: this .env ships inside the app to EVERY user. It must contain the
-# Supabase *anon / publishable* key (NOT the service_role key) with RLS enabled.
-if os.path.exists(".env"):
-    datas += [(".env", ".")]
+# Only the validated, allowlisted configuration enters a distributable build.
+public_env = os.path.join("build", "public-config", ".env")
+if not os.path.isfile(public_env):
+    raise SystemExit("Run python scripts/prepare_public_config.py before packaging.")
+from dotenv import dotenv_values
+from public_config import validate_public_config
+public_values = dotenv_values(public_env, interpolate=False)
+if set(public_values) - {"SUPABASE_URL", "SUPABASE_KEY", "SCREENSHOTS_ENABLED"}:
+    raise SystemExit("Prepared config contains non-public fields. Re-run prepare_public_config.py.")
+validate_public_config(public_values)
+datas += [(public_env, ".")]
 
 # ---- Optional app icon -------------------------------------------------------
 icon_file = "app.ico" if os.path.exists("app.ico") else None

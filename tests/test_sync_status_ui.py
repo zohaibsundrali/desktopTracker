@@ -8,7 +8,7 @@ from sync_status import session_sync_text, screenshot_sync_text, screenshot_poli
 
 
 def dashboard_class(clock):
-    tree = ast.parse(Path(__file__).resolve().parents[1].joinpath('ui_dashboard.py').read_text())
+    tree = ast.parse(Path(__file__).resolve().parents[1].joinpath('ui_dashboard.py').read_text(encoding="utf-8"))
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'DashboardWindow')
     cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in
                 ('_refresh_session_sync_status', '_refresh_screenshot_sync_status', '_refresh_break_status', '_refresh_idle_reminder', '_refresh_activity_sync', '_refresh_input_sync', '_schedule_timer_update')]

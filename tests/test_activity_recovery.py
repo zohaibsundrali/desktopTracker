@@ -123,7 +123,7 @@ class ActivityAggregationTests(unittest.TestCase):
         import ast
         from pathlib import Path
         from typing import Optional
-        tree=ast.parse((Path(__file__).resolve().parents[1]/'app_monitor.py').read_text())
+        tree=ast.parse((Path(__file__).resolve().parents[1]/'app_monitor.py').read_text(encoding="utf-8"))
         classes=[n for n in tree.body if isinstance(n,ast.ClassDef) and n.name in ('CloudDB','AppSession')]
         namespace=dict(datetime=datetime,Optional=Optional,
             AppNameConverter=SimpleNamespace(convert=lambda name:name))

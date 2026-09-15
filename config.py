@@ -2,6 +2,7 @@
 import os
 import sys
 from dotenv import load_dotenv
+from app_version import VERSION as APP_VERSION
 
 load_dotenv()
 
@@ -23,11 +24,9 @@ def user_data_dir() -> str:
     """
     base = os.getenv("APPDATA") or os.path.expanduser("~")
     path = os.path.join(base, "DeveloperTracker" if os.name == "nt" else ".developer-tracker")
-    try:
-        os.makedirs(path, exist_ok=True)
-    except Exception:
-        # Last resort: fall back to the current working directory.
-        path = os.path.abspath(".")
+    # Never silently write private queues into a shared working/program folder.
+    # Callers must surface unavailable per-user storage instead.
+    os.makedirs(path, exist_ok=True)
     return path
 
 
@@ -38,7 +37,7 @@ class Config:
 
     # App Configuration
     APP_NAME = "Developer Activity And  Productivity Tracking"
-    VERSION = "1.0.0"
+    VERSION = APP_VERSION
 
     # Paths
     DATA_DIR = "user_data"

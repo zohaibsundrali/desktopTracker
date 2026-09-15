@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 
 def real_class(file,name):
-    tree=ast.parse((Path(__file__).resolve().parents[1]/file).read_text())
+    tree=ast.parse((Path(__file__).resolve().parents[1]/file).read_text(encoding="utf-8"))
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name==name)
     future=ast.ImportFrom(module='__future__',names=[ast.alias(name='annotations')],level=0)
     namespace=dict(threading=threading,time=time,uuid=uuid,datetime=datetime)
@@ -140,7 +140,7 @@ class MouseStartupStorageTests(unittest.TestCase):
     def test_missing_queue_does_not_construct_os_listener(self):
         from unittest.mock import patch
         import sys
-        tree=ast.parse((Path(__file__).resolve().parents[1]/'mouse_tracker.py').read_text())
+        tree=ast.parse((Path(__file__).resolve().parents[1]/'mouse_tracker.py').read_text(encoding="utf-8"))
         cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='MouseTrackerWithPynput')
         class UnavailableMouse:
             def start_tracking(self):

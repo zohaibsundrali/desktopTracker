@@ -1,0 +1,114 @@
+name: Windows desktop build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      signed:
+        description: Build with the configured production signing certificate
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+      - name: Install build requirements
+        run: |
+          python -m pip install -r requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run offline desktop regression
+        run: |
+          python -m unittest discover -s tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Smoke test the actual dashboard without capture
+        run: python scripts/ui_smoke.py
+      - name: Prepare public configuration
+        env:
+          SUPABASE_URL: ${{ vars.DESKTOP_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ vars.DESKTOP_SUPABASE_PUBLIC_KEY }}
+        run: |
+          # PR builds use a non-production public-format fixture. No authenticated
+          # capture or network tests run here; configured builds require review.
+          if ('${{ github.event_name }}' -eq 'pull_request' -or !$env:SUPABASE_URL -or !$env:SUPABASE_KEY) {
+            $env:SUPABASE_URL = 'https://desktop-build.example.invalid'
+            $env:SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.buildFixture'
+            'Packaging test only. Configure the public project variables and rebuild before distributing.' | Set-Content BUILD-NOT-CONFIGURED.txt
+          }
+          python scripts/prepare_public_config.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare application version
+        run: python scripts/prepare_version.py
+      - name: Build frozen application
+        run: |
+          python -m PyInstaller tracker.spec --noconfirm
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare signing certificate
+        if: github.event_name == 'workflow_dispatch' && inputs.signed
+        env:
+          DESKTOP_SIGNING_PFX: ${{ secrets.DESKTOP_SIGNING_PFX }}
+          DESKTOP_SIGNING_PASSWORD: ${{ secrets.DESKTOP_SIGNING_PASSWORD }}
+        run: |
+          if (Test-Path BUILD-NOT-CONFIGURED.txt) { throw 'A signed release requires real public configuration' }
+          ./scripts/prepare_signing.ps1
+          ./scripts/sign_file.ps1 -FilePath dist/DeveloperTracker/DeveloperTracker.exe
+      - name: Check frozen application setup
+        run: |
+          $process = Start-Process -FilePath dist/DeveloperTracker/DeveloperTracker.exe -ArgumentList '--diagnostics', 'desktop-diagnostics.json' -PassThru
+          if (!$process.WaitForExit(60000)) { $process.Kill(); throw 'Packaged diagnostics timed out' }
+          if ($process.ExitCode -ne 0) { throw 'Packaged setup diagnostics failed' }
+          if (!(Test-Path desktop-diagnostics.json)) { throw 'No packaged diagnostics report' }
+      - name: Compile installer
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if ($env:DESKTOP_SIGNING_THUMBPRINT) {
+            $signer = 'releaseSigner=powershell.exe -NoProfile -NonInteractive -File "' + $PWD.Path + '\scripts\sign_file.ps1" -FilePath $f'
+            & $compiler /DSignedBuild "/S$signer" installer.iss
+          } else {
+            & $compiler installer.iss
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:DESKTOP_SIGNING_THUMBPRINT) {
+            $signature = Get-AuthenticodeSignature Output/DeveloperTracker-Setup.exe
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:DESKTOP_SIGNING_THUMBPRINT) { throw 'Installer signature invalid' }
+            $env:DESKTOP_SIGNING_VERIFIED = 'true'
+          }
+          python scripts/release_manifest.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Remove temporary signing certificate
+        if: always()
+        run: |
+          if ($env:DESKTOP_SIGNING_THUMBPRINT) {
+            Remove-Item "Cert:\CurrentUser\My\$env:DESKTOP_SIGNING_THUMBPRINT" -Force -ErrorAction SilentlyContinue
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop-${{ github.sha }}
+          path: |
+            Output/DeveloperTracker-Setup.exe
+            Output/SHA256SUMS.txt
+            Output/release-manifest.json
+            Output/UNSIGNED-TEST-BUILD.txt
+            desktop-diagnostics.json
+            BUILD-NOT-CONFIGURED.txt
+          if-no-files-found: error
+          retention-days: 14

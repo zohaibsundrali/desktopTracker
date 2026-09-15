@@ -6,8 +6,8 @@
 ; ============================================================
 
 #define MyAppName "Developer Tracker"
-#define MyAppVersion "1.0.0"
-#define MyAppPublisher "Your Company"
+#include "build\version.iss"
+#define MyAppPublisher "DevTrack"
 #define MyAppExeName "DeveloperTracker.exe"
 
 [Setup]
@@ -26,6 +26,13 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Installs into Program Files -> needs admin. Use "lowest" for per-user install.
 PrivilegesRequired=admin
+AppMutex=DeveloperTracker.Desktop
+CloseApplications=no
+RestartApplications=no
+#ifdef SignedBuild
+SignTool=releaseSigner
+SignedUninstaller=yes
+#endif
 ; SetupIconFile=app.ico          ; uncomment if you add an app.ico
 
 [Languages]

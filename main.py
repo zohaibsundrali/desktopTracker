@@ -49,20 +49,30 @@ def _load_env() -> None:
 
 _load_env()
 
-# Check if Supabase credentials are set
-if not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_KEY"):
-    _fatal(
-        "Configuration error",
-        "Supabase credentials not found.\n\n"
-        "The application could not read SUPABASE_URL / SUPABASE_KEY.\n"
-        "Please contact your administrator.",
-    )
-    sys.exit(1)
-
 
 def main():
     """Main application entry point"""
+    if len(sys.argv) == 3 and sys.argv[1] == "--diagnostics":
+        from diagnostics import write_report
+        try:
+            return write_report(sys.argv[2])
+        except OSError:
+            _fatal("Diagnostics", "The report could not be saved. Choose a writable location.")
+            return 1
+    from public_config import PublicConfigError, validate_public_config
     try:
+        validate_public_config(os.environ)
+    except PublicConfigError as exc:
+        _fatal("Configuration error", str(exc) + "\n\nPlease contact your administrator.")
+        return 1
+    from config import user_data_dir
+    from instance_lock import InstanceLock
+    instance = None
+    try:
+        instance = InstanceLock(user_data_dir())
+        if not instance.acquire():
+            _fatal("DevTrack is already open", "Use the existing DevTrack window. Only one tracker can run for this Windows user.")
+            return 1
         from gui_login import main as gui_main
         gui_main()
     except ImportError as e:
@@ -74,6 +84,10 @@ def main():
         _fatal("Unexpected error", f"The application could not start:\n\n{e}")
         sys.exit(1)
 
+    finally:
+        if instance:
+            instance.release()
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
