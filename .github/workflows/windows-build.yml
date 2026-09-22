@@ -42,6 +42,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Smoke test the actual dashboard without capture
         run: python scripts/ui_smoke.py
+      - name: Check dashboard layout and live presentation
+        run: python scripts/dashboard_ui_smoke.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-preview-${{ github.sha }}
+          path: Output/dashboard-preview/
+          if-no-files-found: error
       - name: Check login layout and keyboard actions
         run: python scripts/login_ui_smoke.py
       - uses: actions/upload-artifact@v4
