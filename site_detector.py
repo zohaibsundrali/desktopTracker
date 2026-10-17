@@ -62,7 +62,7 @@ _DOMAIN_MAP = {
     "gemini.google.com": "Gemini", "bard.google.com": "Gemini",
     "copilot.microsoft.com": "Microsoft Copilot",
     "perplexity.ai": "Perplexity",
-    "chat.deepseek.com": "DeepSeek",
+    "chat.deepseek.com": "DeepSeek", "deepseek.com": "DeepSeek",
     "grok.com": "Grok", "x.ai": "Grok",
     "youtube.com": "YouTube",
     "stackoverflow.com": "Stack Overflow",
@@ -96,7 +96,18 @@ def site_from_title(title: Optional[str]) -> Optional[str]:
 def _domain(url: str) -> str:
     try:
         u = url if "://" in url else "http://" + url
-        host = (urlparse(u).netloc or "").lower()
+        host = (urlparse(u).hostname or "").lower().rstrip(".")
+        # UI Automation can occasionally find a page text field instead of the
+        # browser address bar. Never turn arbitrary typed text into a website
+        # label: accept only hostname-shaped values.
+        if not host or len(host) > 253 or " " in host:
+            return ""
+        labels = host.split(".")
+        if (len(labels) < 2 or any(not label or len(label) > 63
+                or label.startswith("-") or label.endswith("-")
+                or not all(ch.isalnum() or ch == "-" for ch in label)
+                for label in labels)):
+            return ""
         return host[4:] if host.startswith("www.") else host
     except Exception:
         return ""

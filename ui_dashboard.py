@@ -832,17 +832,24 @@ class DashboardWindow:
             print(f"Metrics refresh error: {e}")
 
     def _refresh_apps_and_sites(self):
-        """Best-effort refresh of the Applications/Websites panels from live_apps()."""
+        """Refresh app and real per-site aggregates captured by AppMonitor."""
         try:
             monitor = getattr(self.timer, "app_monitor", None)
             if monitor is None:
                 return
             live = getattr(monitor, "live_apps", None)
-            apps = live() if callable(live) else None
-            if not apps:
-                return
-            foreground = monitor.get_summary().get('foreground_app')
-            self.current_app_label.configure(text=str(foreground or '—')[:30])
+            apps = live() if callable(live) else []
+            live_sites = getattr(monitor, "live_sites", None)
+            sites = live_sites() if callable(live_sites) else []
+
+            foreground = next((row for row in apps if row.get("is_foreground")), None)
+            if foreground:
+                app_name = foreground.get("app_name") or "Unknown"
+                site_name = foreground.get("site_name")
+                current = f"{site_name} · {app_name}" if site_name else app_name
+            else:
+                current = '—'
+            self.current_app_label.configure(text=str(current)[:60])
 
             durations = []
             for a in apps:
@@ -852,16 +859,22 @@ class DashboardWindow:
                     durations.append(0.0)
             max_dur = max(durations) if durations else 0.0
 
-            app_rows, site_rows = [], []
+            app_rows = []
             for a, dur in zip(apps, durations):
                 name = a.get("app_name") or a.get("window_title") or "Unknown"
                 frac = (dur / max_dur) if max_dur > 0 else 0.0
                 label = a.get("duration_fmt") or f"{dur:.0f}m"
-                row = (name, frac, label)
-                if "." in str(name) and " " not in str(name):
-                    site_rows.append(row)
-                else:
-                    app_rows.append(row)
+                app_rows.append((name, frac, label))
+
+            max_site_seconds = max((float(row.get("duration_seconds", 0)) for row in sites), default=0.0)
+            site_rows = []
+            for site in sites:
+                seconds = float(site.get("duration_seconds", 0))
+                site_rows.append((
+                    site.get("site_name") or "Other website",
+                    seconds / max_site_seconds if max_site_seconds > 0 else 0.0,
+                    site.get("duration_fmt") or f"{seconds / 60:.0f}m",
+                ))
 
             self._seed_rows(self.apps_panel, app_rows[:6])
             self._seed_rows(self.sites_panel, site_rows[:6])

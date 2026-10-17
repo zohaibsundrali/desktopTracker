@@ -492,6 +492,7 @@ class AppMonitor:
         self._last_save_time: float          = time.time()
 
         self._current_foreground: Optional[str] = None
+        self._current_site: Optional[str] = None
         self._previous_foreground: Optional[str] = None
         self._last_poll_time: float = time.time()
 
@@ -574,8 +575,21 @@ class AppMonitor:
                     "duration_min":   round(active_secs / 60, 2),
                     "duration_fmt":   _fmt_mins(active_secs / 60),
                     "is_foreground":  is_fg,
+                    "site_name":      self._current_site if is_fg else None,
                 })
         return sorted(out, key=lambda x: x["duration_min"], reverse=True)
+
+    def live_sites(self) -> List[Dict]:
+        """Return the website aggregates already captured for the live UI."""
+        with self._lock:
+            out = [{
+                "site_name": site,
+                "duration_seconds": float(rec.get("seconds", 0.0)),
+                "duration_min": round(float(rec.get("seconds", 0.0)) / 60, 2),
+                "duration_fmt": _fmt_mins(float(rec.get("seconds", 0.0)) / 60),
+                "is_foreground": site == self._current_site,
+            } for site, rec in self._site_seconds.items()]
+        return sorted(out, key=lambda row: (-row["duration_seconds"], row["site_name"].lower()))
 
     def get_summary(self) -> Dict:
         sessions = self._done
@@ -641,6 +655,7 @@ class AppMonitor:
                 'active_count':       len(self._active),
                 'completed_count':    len(self._done),
                 'foreground_app':     self._current_foreground,
+                'foreground_site':    self._current_site,
                 'error_summary':      self.get_error_summary(),
                 'supabase_available': self._cloud.available,
                 'timestamp':          datetime.now().isoformat(),
@@ -676,6 +691,7 @@ class AppMonitor:
 
                 with self._lock:
                     self._current_foreground = fg_app
+                    self._current_site = fg_site
 
                     if fg_app and fg_app not in _IGNORE:
                         if fg_site:
