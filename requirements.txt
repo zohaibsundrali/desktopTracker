@@ -9,8 +9,8 @@ pynput==1.7.6
 psutil==5.9.6
 pandas==2.2.3
 numpy==2.1.3
-pillow==11.0.0
-python-dotenv==1.0.0
+pillow==13.0.0
+python-dotenv==1.2.2
 
 # Windows-only: reads the foreground window/app + process name. REQUIRED for
 # application and per-website tracking on Windows (app_monitor uses win32gui /
