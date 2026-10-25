@@ -256,7 +256,11 @@ class MouseTracker:
                         timestamp=datetime.now(timezone.utc).isoformat(),
                         activity_status=self._productivity_tier(float(s.get('productivity_score',0))),
                         active_percentage=float(s.get('active_percentage',0)),
-                        idle_percentage=float(s.get('idle_percentage',0)))
+                        idle_percentage=float(s.get('idle_percentage',0)),
+                        total_events=int(s.get('total_events',0)),
+                        move_events=int(s.get('move_events',0)),
+                        click_events=int(s.get('click_events',0)),
+                        scroll_events=int(s.get('scroll_events',0)))
                     self._pending_input=(str(uuid.uuid4()),payload)
                 if self._input_sync is None:
                     raise RuntimeError('Input storage unavailable')
@@ -532,6 +536,10 @@ class MouseTracker:
     @_serialize_input
     def record_click(self, button: str, x: int, y: int, pressed: bool):
         if not self._capture_allowed():
+            return
+        # pynput emits both the press and release for one physical click. Count
+        # the press only so website/payroll observers never see double clicks.
+        if not pressed:
             return
         key = button if button in self.click_counts else "other"
         self.click_counts[key] += 1

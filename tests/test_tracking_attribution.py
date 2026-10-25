@@ -113,3 +113,47 @@ class TrackingAttributionTests(unittest.TestCase):
         row=self.tracker._persist_session.call_args.args[0]
         self.assertIsNotNone(datetime.fromisoformat(row['start_time']).utcoffset())
         self.assertIsNotNone(datetime.fromisoformat(row['end_time']).utcoffset())
+
+    def test_combined_activity_uses_the_union_of_mouse_and_keyboard_samples(self):
+        t = self.tracker
+        t._compute_active_idle = self.module.TimerTracker._compute_active_idle.__get__(t)
+        t._reset_combined_activity()
+        t._combined_sample_at = 0.0
+        t._sample_combined_activity(0.5, 20, now=1.0)   # mouse only
+        t._sample_combined_activity(20, 0.5, now=2.0)   # keyboard only
+        active, idle = t._compute_active_idle(2.0)
+        self.assertEqual((active, idle), (2.0, 0.0))
+
+    def test_unobserved_or_idle_time_is_never_invented_as_active(self):
+        t = self.tracker
+        t._compute_active_idle = self.module.TimerTracker._compute_active_idle.__get__(t)
+        t._reset_combined_activity()
+        t._combined_sample_at = 0.0
+        t._sample_combined_activity(None, None, now=1.0)
+        t._sample_combined_activity(20, 20, now=2.0)
+        self.assertEqual(t._compute_active_idle(2.0), (0.0, 2.0))
+
+    def test_legacy_score_is_only_the_active_time_percentage(self):
+        session = self.module.TrackingSession('s', 'u', 'e', 'now', total_duration=100,
+            active_duration=40, keyboard_events=10000, mouse_events=10000)
+        self.tracker._calculate_productivity(session)
+        self.assertEqual(session.productivity_score, 40.0)
+
+    def test_live_activity_percentage_uses_combined_sampled_time(self):
+        t = self.tracker
+        t._compute_active_idle = self.module.TimerTracker._compute_active_idle.__get__(t)
+        t._reset_combined_activity()
+        t._combined_active_seconds = 3.0
+        t.instant_timer.get_elapsed = MagicMock(return_value=10.0)
+        t.mouse_tracker = MagicMock()
+        t.mouse_tracker.get_stats.return_value = {
+            'total_events': 999,
+            'active_percentage': 95,
+        }
+        t.keyboard_tracker = MagicMock()
+        t.keyboard_tracker.get_stats.return_value = {
+            'total_keys_pressed': 999,
+            'keyboard_activity_percentage': 90,
+        }
+        stats = t.get_stats()
+        self.assertEqual(stats['active_percentage'], 30.0)

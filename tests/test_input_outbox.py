@@ -12,6 +12,11 @@ from input_outbox import InputOutbox
 IDENTITY = ('auth', 'org', 'dev', 'developer')
 def payload(**updates):
     return dict(dict(session_id='session', organization_id='org', developer_id='dev',total_keys=2), **updates)
+def mouse_payload(**updates):
+    return dict(dict(session_id='session', organization_id='org', developer_id='dev',
+        developer_name='Test', timestamp='2026-10-25T10:00:00+00:00', activity_status='active',
+        active_percentage=60, idle_percentage=40, total_events=10, move_events=6,
+        click_events=3, scroll_events=1), **updates)
 
 class InputOutboxTests(unittest.TestCase):
     def setUp(self):
@@ -77,6 +82,16 @@ class InputOutboxTests(unittest.TestCase):
         self.queue.put('keyboard',self.id,payload())
         self.queue.replay(lambda *args:self.fail('Must not upload'),lambda:False)
         self.assertEqual(self.queue.count(),1)
+
+    def test_mouse_counts_are_complete_integral_and_consistent(self):
+        queue=InputOutbox(self.directory.name,'https://offline.test',IDENTITY,kind='mouse')
+        queue.put('mouse',self.id,mouse_payload())
+        self.assertEqual(queue.count(),1)
+        for bad in (mouse_payload(total_events=9), mouse_payload(click_events=3.5),
+                    mouse_payload(scroll_events=-1),
+                    {k:v for k,v in mouse_payload().items() if k != 'move_events'}):
+            with self.assertRaises(ValueError):
+                queue.put('mouse',str(uuid.uuid4()),bad)
 
     def test_nonblocking_replay_lock_serializes_instances(self):
         self.queue.put('keyboard',self.id,payload())

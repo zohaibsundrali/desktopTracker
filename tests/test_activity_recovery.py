@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from activity_outbox import ActivityOutbox
 import activity_upload
+from app_monitor import sanitize_title
 
 IDENTITY=('auth','org','profile','developer')
 CONTEXT=(*IDENTITY,'login')
@@ -126,7 +127,8 @@ class ActivityAggregationTests(unittest.TestCase):
         tree=ast.parse((Path(__file__).resolve().parents[1]/'app_monitor.py').read_text(encoding="utf-8"))
         classes=[n for n in tree.body if isinstance(n,ast.ClassDef) and n.name in ('CloudDB','AppSession')]
         namespace=dict(datetime=datetime,Optional=Optional,
-            AppNameConverter=SimpleNamespace(convert=lambda name:name))
+            AppNameConverter=SimpleNamespace(convert=lambda name:name),
+            sanitize_title=sanitize_title)
         exec(compile(ast.fix_missing_locations(ast.Module(body=classes,type_ignores=[])),
             'app_monitor.py','exec'),namespace)
         return namespace['CloudDB'],namespace['AppSession']

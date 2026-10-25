@@ -77,7 +77,8 @@ class MouseSnapshotRecoveryTests(unittest.TestCase):
         self.mouse.session_id='session'
         self.mouse.developer_id='profile'
         self.mouse.developer_name='person@example.test'
-        self.mouse.session_summary=dict(active_percentage=40,idle_percentage=60,productivity_score=50)
+        self.mouse.session_summary=dict(active_percentage=40,idle_percentage=60,productivity_score=50,
+            total_events=10,move_events=6,click_events=3,scroll_events=1)
 
     def test_ambiguous_disk_failure_keeps_exact_snapshot_for_final_retry(self):
         self.mouse._input_sync.capture.side_effect=OSError('disk')
@@ -97,7 +98,10 @@ class MouseSnapshotRecoveryTests(unittest.TestCase):
         second=self.mouse._input_sync.capture.call_args.args
         self.assertNotEqual(first[2],second[2])
         self.assertEqual(set(first[1]),{'session_id','developer_id','developer_name','timestamp',
-            'activity_status','active_percentage','idle_percentage'})
+            'activity_status','active_percentage','idle_percentage','total_events','move_events',
+            'click_events','scroll_events'})
+        self.assertEqual(first[1]['total_events'],10)
+        self.assertEqual(first[1]['move_events']+first[1]['click_events']+first[1]['scroll_events'],10)
 
     def test_mouse_stop_does_not_add_session_duration_twice(self):
         self.mouse.session_active_seconds=5

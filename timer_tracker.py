@@ -235,6 +235,10 @@ class TimerTracker:
         self._last_screenshot_sync_status = None
         self._last_activity_sync_status = None
         self._last_input_sync_status = {"keyboard": None, "mouse": None}
+        self._combined_active_seconds = 0.0
+        self._combined_idle_seconds = 0.0
+        self._combined_sample_at = None
+        self._combined_samples = 0
 
         self._api_lock     = threading.RLock()
         self._threads_lock = threading.Lock()
@@ -334,6 +338,7 @@ class TimerTracker:
                 self._idle_reminder = IdleReminder(getattr(config, "SUPABASE_URL", ""),
                     getattr(config, "SUPABASE_KEY", ""), self._tracking_context)
                 self._break_tracker = BreakTracker()
+                self._reset_combined_activity()
                 self.instant_timer.start()
                 self._session_state = SessionState.RUNNING
 
@@ -577,6 +582,11 @@ class TimerTracker:
             except Exception:
                 mouse_idle = keyboard_idle = None
             with self._api_lock:
+                self._sample_combined_activity(
+                    mouse_idle, keyboard_idle,
+                    paused=ctx.pause_ctrl.is_paused,
+                    now=now,
+                )
                 reminder.update(mouse_idle, keyboard_idle, paused=ctx.pause_ctrl.is_paused,
                     authorized=self._tracking_authorized() and not ctx.stop_event.is_set()
                                and self._ctx is ctx)
@@ -758,6 +768,7 @@ class TimerTracker:
                 user_email=self.user_email,
                 pause_ctrl=ctx.pause_ctrl,
                 session_id=ctx.session_id,
+                activity_probe=self._combined_input_is_active,
             )
             self.app_monitor.start()
             log.info("AppMonitor started")
@@ -960,12 +971,10 @@ class TimerTracker:
         """
         stats = {"active_percentage": 0.0, "keystrokes": 0,
                  "mouse_actions": 0, "screenshots": 0}
-        ratios = []
         if self.mouse_tracker:
             try:
                 ms = self.mouse_tracker.get_stats()
                 stats["mouse_actions"] = int(ms.get("total_events", 0) or 0)
-                ratios.append(float(ms.get("active_percentage", 0.0) or 0.0))
             except Exception:
                 pass
         if self.keyboard_tracker:
@@ -973,7 +982,6 @@ class TimerTracker:
                 ks = self.keyboard_tracker.get_stats()
                 stats["keystrokes"] = int(
                     ks.get("total_keys_pressed", ks.get("total_keys", 0)) or 0)
-                ratios.append(float(ks.get("keyboard_activity_percentage", 0.0) or 0.0))
             except Exception:
                 pass
         if self.screenshot_capture:
@@ -982,46 +990,82 @@ class TimerTracker:
                     self.screenshot_capture.stats().get("total_captured", 0) or 0)
             except Exception:
                 pass
-        if ratios:
-            stats["active_percentage"] = round(max(ratios), 1)
+        elapsed = self.instant_timer.get_elapsed()
+        if elapsed > 0:
+            active, _ = self._compute_active_idle(elapsed)
+            stats["active_percentage"] = round((active / elapsed) * 100, 1)
         return stats
 
     def _compute_active_idle(self, total_elapsed: float) -> tuple:
-        """Derive real active/idle seconds from the mouse & keyboard trackers.
+        """Return the sampled union of mouse and keyboard activity.
 
-        A second counts as active if the user was active on EITHER device, so we
-        take the higher of the two activity ratios. Falls back to (total, 0) when
-        no tracker data is available, preserving the previous behaviour rather
-        than reporting a misleading 0% active.
+        Independent percentages cannot be merged with ``max``: mouse use in
+        one half and keyboard use in the other half is 100% combined activity,
+        not 50%.  The one-second sampler records the actual OR decision as the
+        session runs.  Unobserved time is idle rather than invented activity.
         """
-        ratios = []
-        if self.mouse_tracker:
-            try:
-                mp = float(self.mouse_tracker.get_stats().get("active_percentage", 0.0))
-                ratios.append(mp / 100.0)
-            except Exception:
-                pass
-        if self.keyboard_tracker:
-            try:
-                kp = float(self.keyboard_tracker.get_stats().get("keyboard_activity_percentage", 0.0))
-                ratios.append(kp / 100.0)
-            except Exception:
-                pass
-        if not ratios or total_elapsed <= 0:
-            return float(total_elapsed), 0.0
-        active_ratio = max(0.0, min(1.0, max(ratios)))
-        active = round(total_elapsed * active_ratio, 2)
-        idle   = round(max(0.0, total_elapsed - active), 2)
+        total = max(0.0, float(total_elapsed))
+        if total <= 0:
+            return 0.0, 0.0
+        active = round(max(0.0, min(total, self._combined_active_seconds)), 2)
+        idle = round(max(0.0, total - active), 2)
         return active, idle
+
+    def _reset_combined_activity(self) -> None:
+        self._combined_active_seconds = 0.0
+        self._combined_idle_seconds = 0.0
+        self._combined_sample_at = time.monotonic()
+        self._combined_samples = 0
+
+    @staticmethod
+    def _input_active_from_idle(mouse_idle, keyboard_idle, mouse_threshold=2.0,
+                                keyboard_threshold=5.0):
+        states = []
+        for value, threshold in ((mouse_idle, mouse_threshold),
+                                 (keyboard_idle, keyboard_threshold)):
+            try:
+                value = float(value)
+                states.append(value >= 0 and value < threshold)
+            except (TypeError, ValueError):
+                continue
+        return any(states) if states else None
+
+    def _combined_input_is_active(self):
+        try:
+            mouse_idle = self.mouse_tracker.get_idle_seconds() if self.mouse_tracker else None
+            keyboard_idle = self.keyboard_tracker.get_idle_seconds() if self.keyboard_tracker else None
+        except Exception:
+            return False
+        return self._input_active_from_idle(mouse_idle, keyboard_idle) is True
+
+    def _sample_combined_activity(self, mouse_idle, keyboard_idle, paused=False, now=None):
+        now = time.monotonic() if now is None else float(now)
+        previous = self._combined_sample_at
+        self._combined_sample_at = now
+        if previous is None or paused:
+            return
+        elapsed = now - previous
+        # The sampler normally runs once per second.  Discard sleep/hibernate
+        # gaps instead of billing them as either active or idle.
+        if elapsed < 0 or elapsed > 2.5:
+            return
+        active = self._input_active_from_idle(mouse_idle, keyboard_idle)
+        if active is None:
+            return
+        if active:
+            self._combined_active_seconds += elapsed
+        else:
+            self._combined_idle_seconds += elapsed
+        self._combined_samples += 1
 
     def _calculate_productivity(self, session: TrackingSession) -> None:
         try:
-            kb  = min(session.keyboard_events / 10, 100) if session.keyboard_events else 0.0
-            ms  = min(session.mouse_events    / 5,  100) if session.mouse_events    else 0.0
-            act = min((session.active_duration / session.total_duration) * 100, 100) \
-                  if session.total_duration > 0 else 0.0
-            session.productivity_score = round(
-                max(0.0, min(100.0, kb * 0.25 + ms * 0.15 + act * 0.60)), 2)
+            # Keystroke and mouse volume are not a measure of work quality and
+            # must not reward frantic input.  Keep the legacy column for schema
+            # compatibility, but store the transparent active-time percentage.
+            act = ((session.active_duration / session.total_duration) * 100
+                   if session.total_duration > 0 else 0.0)
+            session.productivity_score = round(max(0.0, min(100.0, act)), 2)
         except Exception as e:
             log.error(f"Productivity calc error: {e}")
             session.productivity_score = 0.0

@@ -15,7 +15,9 @@ IDENTITY_FIELDS = {'session_id', 'organization_id', 'developer_id'}
 KEYBOARD_FIELDS = {'user_email', 'activity_score', 'keyboard_activity_percentage',
     'active_time_minutes', 'idle_time_minutes', 'total_time_minutes', 'total_keys',
     'unique_keys', 'words_per_minute', 'per_minute_summary', 'tracked_at'}
-MOUSE_FIELDS = {'developer_name', 'timestamp', 'activity_status', 'active_percentage', 'idle_percentage'}
+MOUSE_COUNT_FIELDS = {'total_events', 'move_events', 'click_events', 'scroll_events'}
+MOUSE_FIELDS = {'developer_name', 'timestamp', 'activity_status', 'active_percentage',
+    'idle_percentage'} | MOUSE_COUNT_FIELDS
 MINUTE_FIELDS = {'Minute', 'Key Presses', 'Unique Keys', 'WPM', 'Active Seconds',
     'Idle Seconds', 'Active %', 'Special Keys', 'Backspaces', 'Key Combos', 'Avg Key Duration'}
 TEXT_FIELDS = IDENTITY_FIELDS | {'user_email', 'tracked_at', 'developer_name', 'timestamp', 'activity_status'}
@@ -43,6 +45,14 @@ def validate_aggregate(kind, payload):
                 raise ValueError('Invalid input metadata')
         elif type(value) not in (int, float) or not math.isfinite(value) or value < 0:
             raise ValueError('Input metrics must be nonnegative numbers')
+    if kind == 'mouse':
+        if not MOUSE_COUNT_FIELDS.issubset(payload):
+            raise ValueError('Mouse event counts are required')
+        if any(type(payload[name]) is not int for name in MOUSE_COUNT_FIELDS):
+            raise ValueError('Mouse event counts must be integers')
+        if payload['total_events'] != (payload['move_events'] + payload['click_events']
+                                       + payload['scroll_events']):
+            raise ValueError('Mouse event counts are inconsistent')
 
 
 class InputOutbox(SessionOutbox):

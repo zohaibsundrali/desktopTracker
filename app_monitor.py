@@ -69,11 +69,22 @@ def get_foreground_app() -> Optional[str]:
 
 
 _SENSITIVE_KV_RE = re.compile(
-    r'\b(token|password|passwd|pwd|secret|api[_-]?key|apikey|access[_-]?token|'
-    r'refresh[_-]?token|authorization|session[_-]?id|client[_-]?secret|'
-    r'id[_-]?token|bearer)\b(\s*[=:]\s*)(\S+)',
+    r'\b(token|password|passwd|pwd|secret|api[\s_-]?key|apikey|access[\s_-]?token|'
+    r'refresh[\s_-]?token|authorization|session[\s_-]?id|client[\s_-]?secret|'
+    r'id[\s_-]?token)\b(\s*[=:]\s*)'
+    r'((?:bearer\s+)?(?:"[^"]*"|\'[^\']*\'|[^\s,;]+))',
     re.IGNORECASE,
 )
+_BEARER_RE = re.compile(r'\bbearer\s+[A-Za-z0-9._~+/=-]+', re.IGNORECASE)
+_JWT_RE = re.compile(
+    r'\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b'
+)
+_CREDENTIAL_RE = re.compile(
+    r'\b(?:sk_(?:live|test)_[A-Za-z0-9_-]{8,}|sb_secret_[A-Za-z0-9_-]{8,}|'
+    r'gh[pousr]_[A-Za-z0-9]{20,})\b',
+    re.IGNORECASE,
+)
+_URL_USERINFO_RE = re.compile(r'(https?://)[^\s/@:]+:[^\s/@]+@', re.IGNORECASE)
 _EMAIL_RE = re.compile(r'\b[\w.+-]+@[\w-]+\.[\w.-]+\b')
 _MAX_TITLE_LEN = 150
 
@@ -87,14 +98,21 @@ def sanitize_title(title: str) -> str:
     """
     if not title:
         return ""
-    t = title
+    t = str(title)
     # 1) URL query strings (?a=b&c=d) — the common OAuth/token leak.
     t = re.sub(r'\?[^\s]*=[^\s]*', '?[redacted]', t)
-    # 2) Any remaining sensitive key=value / key: value pairs.
+    # 2) Credentials embedded in URL authority (https://user:password@host).
+    t = _URL_USERINFO_RE.sub(r'\1[redacted]@', t)
+    # 3) Any remaining sensitive key=value / key: value pairs, including
+    #    human-readable variants such as "API key" and Authorization Bearer.
     t = _SENSITIVE_KV_RE.sub(lambda m: m.group(1) + m.group(2) + "[redacted]", t)
-    # 3) Email addresses.
+    # 4) Standalone bearer credentials, JWTs and common provider key formats.
+    t = _BEARER_RE.sub('Bearer [redacted]', t)
+    t = _JWT_RE.sub('[redacted-token]', t)
+    t = _CREDENTIAL_RE.sub('[redacted-key]', t)
+    # 5) Email addresses.
     t = _EMAIL_RE.sub("[email]", t)
-    # 4) Cap length to avoid storing huge blobs.
+    # 6) Cap length to avoid storing huge blobs.
     t = t.strip()
     if len(t) > _MAX_TITLE_LEN:
         t = t[:_MAX_TITLE_LEN].rstrip() + "…"
@@ -289,7 +307,9 @@ class AppSession:
 
         self.app_name_raw      = app_name_raw.strip().lower()
         self.app_name          = AppNameConverter.convert(app_name_raw)
-        self.window_title      = window_title.strip() if window_title else ""
+        # Defence in depth: callers should already supply a sanitized OS title,
+        # but the model itself never accepts a raw title into persistence.
+        self.window_title      = sanitize_title(window_title)
         self.start_time        = start_time
         self.end_time: Optional[datetime] = None
         self.active_seconds    = 0.0
@@ -460,7 +480,8 @@ class CloudDB:
 class AppMonitor:
     def __init__(self, user_email: Optional[str] = None, pause_ctrl: Optional[object] = None,
                  upload_interval_seconds: float = AUTO_SAVE_SECS,
-                 session_id: Optional[str] = None, tracking_context=None):
+                 session_id: Optional[str] = None, tracking_context=None,
+                 activity_probe=None):
         self.user_login: str = getpass.getuser()
         # No `<login>@<hostname>` invention. app_usage is read on the website
         # with .eq("user_email", userEmail) against the signed-in person's
@@ -478,6 +499,10 @@ class AppMonitor:
         self.session_id: str = session_id or str(uuid.uuid4())
 
         self.pause_ctrl = pause_ctrl
+        # The timer owns the combined mouse/keyboard idle decision.  Keeping
+        # that decision in one place prevents a foreground window from being
+        # credited merely because it stayed open while the person was idle.
+        self._activity_probe = activity_probe
 
         try:
             self._upload_interval_seconds: float = float(upload_interval_seconds)
@@ -688,18 +713,20 @@ class AppMonitor:
                 # or website. Normal polls are POLL_INTERVAL apart.
                 time_delta = max(0.0, min(current_time - self._last_poll_time, POLL_INTERVAL * 2))
                 self._last_poll_time = current_time
+                input_active = self._input_is_active()
 
                 with self._lock:
                     self._current_foreground = fg_app
                     self._current_site = fg_site
 
                     if fg_app and fg_app not in _IGNORE:
-                        if fg_site:
+                        if fg_site and input_active:
                             self._accumulate_site(fg_site, time_delta)
 
                         if (self._previous_foreground and
                             self._previous_foreground != fg_app and 
-                            self._previous_foreground in self._active):
+                            self._previous_foreground in self._active and
+                            input_active):
                             log.debug(
                                 f"App switch: {self._previous_foreground} → {fg_app} "
                                 f"(credited {time_delta:.2f}s to {self._previous_foreground})"
@@ -710,7 +737,7 @@ class AppMonitor:
                             self._open_session(fg_app, fg_title)
 
                         if fg_app in self._active:
-                            if self._previous_foreground == fg_app:
+                            if self._previous_foreground == fg_app and input_active:
                                 self._active[fg_app].add_active_time(time_delta)
 
                             current_title = self._active[fg_app].window_title
@@ -725,7 +752,8 @@ class AppMonitor:
                         # made this crediting dead code.
                         if (self._previous_foreground and
                             self._previous_foreground in self._active and
-                            self._previous_foreground not in _IGNORE):
+                            self._previous_foreground not in _IGNORE and
+                            input_active):
                             self._active[self._previous_foreground].add_active_time(time_delta)
                             log.debug(
                                 f"Lost focus: {self._previous_foreground} "
@@ -766,6 +794,20 @@ class AppMonitor:
                 step = min(0.2, remaining)
                 time.sleep(step)
                 remaining -= step
+
+    def _input_is_active(self) -> bool:
+        """Return the coordinator's combined input state, failing closed.
+
+        A configured probe that cannot answer must never turn an idle desktop
+        into payable app/site time.  Standalone AppMonitor users without a
+        probe retain the historical foreground-only behaviour.
+        """
+        if self._activity_probe is None:
+            return True
+        try:
+            return self._activity_probe() is True
+        except Exception:
+            return False
 
     def _flush_live_snapshot(self) -> None:
         self._flush()
