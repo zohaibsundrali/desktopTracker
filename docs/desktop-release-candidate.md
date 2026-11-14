@@ -1,4 +1,4 @@
-# Windows desktop 1.1.0 testing candidate
+# Windows desktop 1.1.2 testing candidate
 
 This consolidates the previous packaging PR and the desktop release completion work into one candidate. It targets Windows 10/11 x64. The test installer is unsigned until an actual publisher certificate is configured. Code/build checks and installed-device acceptance are separate.
 

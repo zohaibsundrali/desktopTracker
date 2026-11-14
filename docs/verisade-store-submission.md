@@ -5,7 +5,7 @@ The Store package uses the identity supplied from Partner Center:
 - Name: `Verisade.Verisade`
 - Publisher: `CN=07D5F1AC-884A-4074-94D6-C211985F5D32`
 - Publisher display name and product display name: `Verisade`
-- Version: app version with a final `.0` (currently `1.1.0.0`)
+- Version: `app_version.VERSION` with a final `.0` (currently `1.1.2.0`)
 - Windows Desktop x64, Windows 10 build 19041 or later
 
 Run **Windows desktop build** manually on the reviewed branch with signing disabled. Download the `verisade-store-<commit>` artifact. Check `package-report.json`: `configured` must be true. PR builds contain fixture configuration and must not be submitted. The package includes only the previously approved public backend configuration. No certificate, password, or service-role key is needed to build a Store submission package.
