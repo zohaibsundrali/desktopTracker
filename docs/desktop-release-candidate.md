@@ -25,6 +25,13 @@ Repository variables `DESKTOP_SUPABASE_URL` and `DESKTOP_SUPABASE_PUBLIC_KEY` ar
 
 Keep the previous known-good installer and its checksum. To roll back, stop tracking, quit and reinstall that verified version. Never delete or move the per-user queue directory to force an update. Downgrade compatibility must be checked against hosted migrations before rollout; the in-app updater never offers downgrades.
 
+Windows installer and Store candidate artifacts are retained for 90 days. This
+keeps candidates available during acceptance and handover; Actions artifacts are
+not a permanent public download host. Publish the exact signed, accepted installer
+and its checksum as stable GitHub Release assets before configuring the website.
+An expired candidate must be rebuilt and rechecked, not replaced with an older
+installer carrying a different commit.
+
 Signing references: [Windows Authenticode verification](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-authenticodesignature), [Inno Setup application mutex](https://jrsoftware.org/ishelp/topic_setup_appmutex.htm), [signed uninstaller](https://jrsoftware.org/ishelp/topic_setup_signeduninstaller.htm). Lock/suspend handling follows [Windows power notifications](https://learn.microsoft.com/en-us/windows/win32/power/wm-powerbroadcast).
 
 ## One final employee test pass

@@ -83,7 +83,7 @@ jobs:
           name: verisade-store-${{ github.sha }}
           path: Output/store/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
       - name: Prepare signing certificate
         if: github.event_name == 'workflow_dispatch' && inputs.signed
         env:
@@ -133,4 +133,4 @@ jobs:
             desktop-diagnostics.json
             BUILD-NOT-CONFIGURED.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
