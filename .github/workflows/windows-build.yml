@@ -116,6 +116,19 @@ jobs:
           }
           python scripts/release_manifest.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install, verify and uninstall the built application
+        run: ./scripts/installer_smoke.ps1
+      - name: Preserve installer verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-verification-${{ github.sha }}
+          path: |
+            Output/installer-smoke.json
+            Output/installed-desktop-diagnostics.json
+            Output/install-smoke.log
+          if-no-files-found: warn
+          retention-days: 90
       - name: Remove temporary signing certificate
         if: always()
         run: |

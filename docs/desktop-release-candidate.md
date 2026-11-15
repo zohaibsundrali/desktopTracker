@@ -36,6 +36,12 @@ Signing references: [Windows Authenticode verification](https://learn.microsoft.
 
 ## One final employee test pass
 
+CI also silently installs the exact compiled installer into a temporary path
+containing spaces, runs the installed application's offline diagnostics, checks
+its version, and uninstalls it. The `installer-verification` artifact records
+these results. This runs on Windows Server 2022 and does not replace the Windows
+10/11 capture, lock/sleep, signing and offline acceptance below.
+
 Use the configured candidate and a disposable employee account after the matching hosted migrations are confirmed:
 
 1. Install, sign in, choose a task, Start. Launch the tracker again: the second copy must refuse to start.
