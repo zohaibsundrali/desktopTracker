@@ -29,6 +29,8 @@ def main():
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--base-url', help='Optional running website to verify its keyboard API')
     parser.add_argument('--allow-qa-writes', action='store_true')
+    parser.add_argument('--verify-role-access', action='store_true', help='Verify HR, manager, team lead and unrelated staff with temporary QA reporting links')
+    parser.add_argument('--pause-before-cleanup', action='store_true', help='Keep synthetic samples for an interactive browser check; Enter always resumes cleanup')
     args = parser.parse_args()
     if not args.allow_qa_writes:
         parser.error('--allow-qa-writes is required; only disposable QA tenants are accepted')
@@ -56,6 +58,8 @@ def main():
     report = {'run': session_id, 'scope': 'Synthetic data through real Python transports and hosted Supabase',
               'windows_capture_tested': False, 'started_at': datetime.now(timezone.utc).isoformat(), 'results': results}
     auth, context, device, storage_path, capture_id = None, None, None, None, None
+    reporting_restore = []
+    role_viewers = {}
     client = httpx.Client(timeout=30, follow_redirects=False)
     admin_headers = {'apikey': key, 'Authorization': 'Bearer ' + service}
 
@@ -149,6 +153,26 @@ def main():
         httpx.Client = diagnostic_client
         results.append({'name': 'Real desktop login and device enrollment', 'status': 'PASS'})
         print('PASS Real desktop login and device enrollment', flush=True)
+
+        if args.verify_role_access:
+            for role in ('HR', 'MANAGER', 'TEAM_LEAD', 'EMPLOYEE', 'FINANCE', 'CLIENT'):
+                viewer, identity = login(role)
+                require(identity['app_metadata'].get('organization_id') == org, 'Role test identity is outside QA organization')
+                role_viewers[role] = viewer
+            identities = {}
+            for role in ('DEVELOPER', 'MANAGER', 'TEAM_LEAD', 'EMPLOYEE'):
+                found = request('GET', '/rest/v1/memberships', params={'select': 'id,user_id,user_type,reports_to,role',
+                    'organization_id': 'eq.' + org, 'email': 'eq.' + env[f'E2E_{role}_EMAIL'], 'status': 'eq.active'})
+                require(len(found) == 1, 'QA reporting identity is ambiguous: ' + role)
+                identities[role] = found[0]
+            for child, parent in (('TEAM_LEAD', 'MANAGER'), ('DEVELOPER', 'TEAM_LEAD')):
+                member = identities[child]
+                reporting_restore.append((member['id'], member['reports_to']))
+                request('PATCH', '/rest/v1/memberships', params={'id': 'eq.' + member['id'], 'organization_id': 'eq.' + org},
+                    json={'reports_to': identities[parent]['user_id']})
+            report['developer_id'] = user.id
+            report['unrelated_developer_id'] = identities['EMPLOYEE']['user_id']
+            save()
 
         now = datetime.now(timezone.utc)
         start, end = (now - timedelta(seconds=60)).isoformat(), now.isoformat()
@@ -254,6 +278,40 @@ def main():
                     require(len(matching) == 1 and matching[0]['total_keys'] == 12, 'Website API did not return uploaded keyboard metrics')
                 check('Website API fetches the tracker keyboard sample', web_test)
 
+            if args.verify_role_access:
+                def role_access_test(role, viewer, expected):
+                    for table in ('productivity_sessions', 'keyboard_stats', 'mouse_activities', 'app_usage', 'browser_usage'):
+                        found = rows(table, viewer)
+                        require(len(found) == (1 if expected else 0), role + ' has incorrect scope for ' + table)
+                    found = rows('screenshots', viewer, 'capture_id', capture_id)
+                    require(len(found) == (1 if expected else 0), role + ' has incorrect screenshot metadata access')
+                    response = client.get(url + '/storage/v1/object/authenticated/monitoring/' + storage_path,
+                        headers={'apikey': key, 'Authorization': 'Bearer ' + viewer})
+                    require((response.status_code == 200 and response.content == image) if expected else response.status_code != 200,
+                        role + ' has incorrect screenshot object access')
+                    roster = request('POST', '/rest/v1/rpc/monitoring_roster', viewer, json={'p_organization_id': org})
+                    require(any(item['id'] == user.id for item in roster) == expected, role + ' has incorrect tracking selector scope')
+                    if role in ('MANAGER', 'TEAM_LEAD'):
+                        require(not any(item['id'] == identities['EMPLOYEE']['user_id'] for item in roster), 'Unrelated staff leaked into team selector')
+                    page = client.post(url + '/rest/v1/rpc/monitoring_screenshot_page',
+                        headers={'apikey': key, 'Authorization': 'Bearer ' + viewer}, json={
+                            'p_organization_id': org, 'p_developer_id': user.id,
+                            'p_start': start, 'p_end': (now + timedelta(seconds=1)).isoformat()})
+                    require(page.is_success if expected else page.status_code == 403, role + ' has incorrect screenshot page access')
+                    if expected:
+                        require(any(item['storage_path'] == storage_path for item in page.json()['rows']), role + ' screenshot missing from page')
+                    presence = client.post(url + '/rest/v1/rpc/monitoring_tracker_presence',
+                        headers={'apikey': key, 'Authorization': 'Bearer ' + viewer}, json={'p_organization_id': org, 'p_developer_id': user.id})
+                    require(presence.is_success if expected else presence.status_code == 403, role + ' has incorrect presence access')
+                for role, viewer, expected in [('SELF', token, True), ('OWNER', owner_token, True)] + [
+                        (role, viewer, role in ('HR', 'MANAGER', 'TEAM_LEAD')) for role, viewer in role_viewers.items()]:
+                    check(role + ' real database, private screenshot, roster and presence access',
+                        lambda role=role, viewer=viewer, expected=expected: role_access_test(role, viewer, expected))
+            if args.pause_before_cleanup:
+                save()
+                print('Samples ready for browser verification. Press Enter to revoke the QA device and clean up.', flush=True)
+                input()
+
             def revocation_test():
                 request('PATCH', '/rest/v1/tracker_devices', params={'id': 'eq.' + device, 'organization_id': 'eq.' + org},
                         json={'revoked_at': datetime.now(timezone.utc).isoformat()})
@@ -279,6 +337,15 @@ def main():
                 check('Clean up this run’s ' + table, cleanup)
             if device:
                 check('Clean up this run’s enrolled device', lambda: request('DELETE', '/rest/v1/tracker_devices', params={'id': 'eq.' + device, 'organization_id': 'eq.' + context[1]}))
+        if context:
+            for member_id, previous_parent in reversed(reporting_restore):
+                def restore(member_id=member_id, previous_parent=previous_parent):
+                    request('PATCH', '/rest/v1/memberships', params={'id': 'eq.' + member_id, 'organization_id': 'eq.' + context[1]},
+                        json={'reports_to': previous_parent})
+                    found = request('GET', '/rest/v1/memberships', params={'select': 'reports_to', 'id': 'eq.' + member_id,
+                        'organization_id': 'eq.' + context[1]})
+                    require(len(found) == 1 and found[0]['reports_to'] == previous_parent, 'Reporting link restoration failed')
+                check('Restore temporary QA reporting link', restore)
         for token in tokens:
             try:
                 request('POST', '/auth/v1/logout?scope=local', token)

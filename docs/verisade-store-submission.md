@@ -26,3 +26,31 @@ The Store payload has its own update-channel marker and directs users to Microso
 Do not sign this Store candidate using a self-signed certificate and claim public trust. Do not treat an EXE/MSI listing as interchangeable with this MSIX product.
 
 References: [manual desktop packaging](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-manual-conversion), [Store signing](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide).
+
+## Free distribution and Smart App Control (19 November 2026)
+
+The direct EXE preview is unsigned and can be blocked by Smart App Control. The
+free distribution path is an MSIX submission to Microsoft Store, where Microsoft
+signs the accepted package. An EXE/MSI Store listing still needs the publisher's
+own trusted signature; it is not an interchangeable route.
+
+1. Open [Store developer registration](https://storedeveloper.microsoft.com),
+   choose the free individual account flow, and complete Microsoft's identity
+   verification yourself. If you already own the identity above, use that account.
+2. In Partner Center, open the Verisade product and confirm its Product identity
+   matches `packaging/store/identity.json` exactly. Create an MSIX submission.
+3. Upload the configured `Verisade.msix`, complete the listing and certification
+   requirements above, and submit for review. The raw MSIX is a submission file,
+   not an employee installation or a signed release.
+4. After approval, install through Store and complete the physical Windows
+   tracking checks. Give the website maintainer the product's Store URL to update
+   `/download`; do not replace it with a guessed listing URL.
+
+The existing configured candidate from commit `e47f2fc` is available in
+[GitHub Actions](https://github.com/zohaibsundrali/desktopTracker/actions/runs/43688310412/artifacts/14151033271).
+Its SHA-256 is `2552c26198ae70b4e151ce854c29c1973cb1e2e0af4d75e4455e802d1dc88322`.
+Packaging and payload checks passed; Store certification remains pending. No paid
+signing service or subscription has been created.
+
+Official references: [free individual registration](https://learn.microsoft.com/en-us/windows/apps/publish/whats-new-individual-developer)
+and [Store versus direct-download signing](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options).
